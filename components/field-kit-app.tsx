@@ -581,6 +581,12 @@ function RightRail({
   );
 }
 
+function matchesPreparedFilter(spell: Spell, filter: string) {
+  if (filter === "Prepared") return spell.prepared;
+  if (filter === "Not prepared") return !spell.prepared;
+  return true;
+}
+
 function SpellLevelSection({
   title,
   spells,
@@ -784,9 +790,13 @@ export function FieldKitApp() {
     () => character.spells.filter((spell) => spell.prepared && !spell.alwaysPrepared),
     [character.spells],
   );
-  const cantrips = useMemo(() => character.spells.filter((spell) => spell.level === 0), [character.spells]);
-  const firstLevelSpells = useMemo(() => character.spells.filter((spell) => spell.level === 1), [character.spells]);
-  const secondLevelSpells = useMemo(() => character.spells.filter((spell) => spell.level === 2), [character.spells]);
+  const visibleSpells = useMemo(
+    () => character.spells.filter((spell) => matchesPreparedFilter(spell, character.ui.spellFilter)),
+    [character.spells, character.ui.spellFilter],
+  );
+  const cantrips = useMemo(() => visibleSpells.filter((spell) => spell.level === 0), [visibleSpells]);
+  const firstLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 1), [visibleSpells]);
+  const secondLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 2), [visibleSpells]);
   const currentPreparationId = character.longRest.currentPreparationId;
   const currentRestElixirs = useMemo(
     () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
@@ -1542,6 +1552,31 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "spells" ? (
             <div className="space-y-4">
+              <ShellCard title="Prepared Filter" compact>
+                <div className="flex flex-wrap gap-2">
+                  {["Prepared", "Not prepared", "All"].map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() =>
+                        setCharacter((current) => ({
+                          ...current,
+                          ui: {
+                            ...current.ui,
+                            spellFilter: filter,
+                          },
+                        }))
+                      }
+                      className={cx(
+                        "min-h-10 rounded-full px-4 text-sm transition",
+                        character.ui.spellFilter === filter ? "bg-[var(--green)] text-white" : "border border-[var(--line)] bg-white/80 text-[var(--text)]",
+                      )}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              </ShellCard>
               <SpellLevelSection title="Cantrips" spells={cantrips} slotLabel="No spell slots required." feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} />
               <SpellLevelSection
                 title="Level 1 Spells"
