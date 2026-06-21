@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEventHandler, type ReactNode } from "react";
 import {
   Backpack,
+  Check,
+  ChevronRight,
   FlaskConical,
-  LogIn,
-  LogOut,
   HeartPulse,
   Hammer,
   LayoutDashboard,
+  LogIn,
+  LogOut,
   MoonStar,
   Shield,
   Sparkles,
@@ -18,21 +20,22 @@ import {
 import { createSeedCharacter } from "@/lib/seed-data";
 import { getFirebaseServices, isFirebaseConfigured, listenForGoogleUser, saveCharacter, signInWithGoogle, signOutUser, subscribeToCharacter } from "@/lib/firebase";
 import {
-  type ActiveInfusion,
   type Attack,
   type CharacterData,
-  type ChecklistItem,
+  type Elixir,
   type EventLogEntry,
   type Feature,
-  type InventoryCategory,
-  type Reminder,
   type NavView,
   type Resource,
   type Spell,
-  type ToolEntry,
 } from "@/lib/types";
 
 const LOCAL_STORAGE_KEY = "breks-field-kit-cache";
+const ACTION_FEEDBACK_MS = 1400;
+const TOAST_TIMEOUT_MS = 5000;
+const ABILITY_ORDER = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"] as const;
+const LONG_REST_ELIXIRS = ["Healing", "Swiftness", "Resilience", "Boldness", "Flight", "Transformation"];
+const spellFilters = ["Prepared", "Always Prepared", "Emergency Support", "Control", "Damage", "Mobility", "Utility", "Reaction", "Concentration", "All"];
 
 const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -50,20 +53,18 @@ type UndoState = {
   snapshot: CharacterData;
 };
 
-const spellFilters = ["Prepared", "Always Prepared", "Emergency Support", "Control", "Damage", "Mobility", "Utility", "Reaction", "Concentration", "All"];
-
-const elixirOptions = [
-  "Healing: regain 2d4 + Intelligence modifier HP",
-  "Swiftness: +10 ft. walking speed for 1 hour",
-  "Resilience: +1 AC for 10 minutes",
-  "Boldness: add 1d4 to attack rolls and saving throws for 1 minute",
-  "Flight: fly speed 10 ft. for 10 minutes",
-  "Transformation: Alter Self effect for 10 minutes",
-];
+type ToastState = {
+  id: string;
+  message: string;
+  tone?: "default" | "success";
+  undoable?: boolean;
+};
 
 function getInitialCharacter() {
+  const seed = createSeedCharacter();
+
   if (typeof window === "undefined") {
-    return createSeedCharacter();
+    return seed;
   }
 
   const cached = window.localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -72,9 +73,9 @@ function getInitialCharacter() {
   }
 
   try {
-    return JSON.parse(cached) as CharacterData;
+    return hydrateCharacter(JSON.parse(cached));
   } catch {
-    return createSeedCharacter();
+    return seed;
   }
 }
 
@@ -90,6 +91,37 @@ function cloneCharacter(data: CharacterData) {
   return JSON.parse(JSON.stringify(data)) as CharacterData;
 }
 
+function hydrateCharacter(raw: Partial<CharacterData>) {
+  const seed = createSeedCharacter();
+  const hydrated = {
+    ...seed,
+    ...raw,
+    core: { ...seed.core, ...raw.core },
+    abilities: { ...seed.abilities, ...raw.abilities },
+    stats: { ...seed.stats, ...raw.stats },
+    savingThrows: { ...seed.savingThrows, ...raw.savingThrows },
+    longRest: { ...seed.longRest, ...raw.longRest },
+    ui: { ...seed.ui, ...raw.ui },
+    resources: raw.resources ?? seed.resources,
+    reminders: raw.reminders ?? seed.reminders,
+    decisionPrompts: raw.decisionPrompts ?? seed.decisionPrompts,
+    attacks: raw.attacks ?? seed.attacks,
+    spells: raw.spells ?? seed.spells,
+    elixirs: raw.elixirs ?? seed.elixirs,
+    features: raw.features ?? seed.features,
+    tools: raw.tools ?? seed.tools,
+    infusionsKnown: raw.infusionsKnown ?? seed.infusionsKnown,
+    infusionsActive: raw.infusionsActive ?? seed.infusionsActive,
+    inventory: raw.inventory ?? seed.inventory,
+    companion: { ...seed.companion, ...raw.companion },
+    restChecklist: raw.restChecklist ?? seed.restChecklist,
+    eventLog: raw.eventLog ?? seed.eventLog,
+  } satisfies CharacterData;
+
+  syncDerivedState(hydrated);
+  return hydrated;
+}
+
 function stampLog(text: string, sessionLabel: string): EventLogEntry {
   return {
     id: crypto.randomUUID(),
@@ -97,6 +129,15 @@ function stampLog(text: string, sessionLabel: string): EventLogEntry {
     text,
     sessionLabel,
   };
+}
+
+function formatSigned(value: number | string) {
+  const numeric = typeof value === "string" ? Number(value) : value;
+  if (!Number.isFinite(numeric)) {
+    return String(value);
+  }
+
+  return numeric >= 0 ? `+${numeric}` : `${numeric}`;
 }
 
 function formatTime(timestamp: string) {
@@ -110,6 +151,11 @@ function formatTime(timestamp: string) {
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
+}
+
+function numberValue(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function matchesSpellFilter(spell: Spell, filter: string) {
@@ -126,18 +172,57 @@ function matchesSpellFilter(spell: Spell, filter: string) {
   return true;
 }
 
-function featureGroups(features: Feature[]) {
+function syncDerivedState(draft: CharacterData) {
+  const elixirResource = draft.resources.find((item) => item.id === "elixirs");
+  if (elixirResource) {
+    elixirResource.current = draft.elixirs.filter((item) => !item.consumed).length;
+  }
+
+  const veechResource = draft.resources.find((item) => item.id === "veech-hp");
+  if (veechResource) {
+    veechResource.current = draft.companion.currentHp;
+  }
+}
+
+function buildElixirFromSelection(options: {
+  name: string;
+  holder: string;
+  notes: string;
+  source: Elixir["source"];
+  duration: string;
+  effect: string;
+  createdDuringRestId?: string;
+  expiresOnLongRest?: boolean;
+}): Elixir {
   return {
-    action: features.filter((item) => item.category === "action"),
-    bonus: features.filter((item) => item.category === "bonus"),
-    reaction: features.filter((item) => item.category === "reaction"),
-    passive: features.filter((item) => item.category === "passive"),
+    id: crypto.randomUUID(),
+    name: options.name,
+    effect: options.effect,
+    holder: options.holder,
+    consumed: false,
+    duration: options.duration,
+    notes: options.notes || undefined,
+    source: options.source,
+    createdDuringRestId: options.createdDuringRestId,
+    expiresOnLongRest: options.expiresOnLongRest,
   };
 }
 
-function numberValue(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+function useTemporaryFeedback() {
+  const [feedback, setFeedback] = useState<Record<string, string>>({});
+
+  function pulse(id: string, label: string) {
+    setFeedback((current) => ({ ...current, [id]: label }));
+    window.setTimeout(() => {
+      setFeedback((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    }, ACTION_FEEDBACK_MS);
+  }
+
+  return { feedback, pulse };
 }
 
 function ShellCard({
@@ -148,7 +233,7 @@ function ShellCard({
 }: {
   title?: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 }) {
   return (
@@ -164,12 +249,165 @@ function ShellCard({
   );
 }
 
-function LabelValue({ label, value }: { label: string; value: React.ReactNode }) {
+function StatPill({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-[var(--line)] bg-white/70 p-3">
-      <p className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{value}</p>
+    <div className="grid min-h-[112px] place-items-center rounded-[24px] border border-[var(--line)] bg-white/78 p-3 text-center">
+      <div>
+        <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
+        <p className="mt-3 text-4xl font-bold leading-none text-[var(--text)] sm:text-[2.7rem]">{value}</p>
+      </div>
     </div>
+  );
+}
+
+function AbilityBox({ label, modifier, score }: { label: string; modifier: number; score: number }) {
+  return (
+    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 px-4 py-3 text-center">
+      <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">{label}</p>
+      <p className="mt-2 text-3xl font-bold leading-none">{formatSigned(modifier)}</p>
+      <p className="mt-2 text-sm font-medium text-[var(--muted)]">{score}</p>
+    </div>
+  );
+}
+
+function FieldValueInput({
+  label,
+  value,
+  denominator,
+  onChange,
+  onBlur,
+  onKeyDown,
+}: {
+  label: string;
+  value: string;
+  denominator?: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  onKeyDown: KeyboardEventHandler<HTMLInputElement>;
+}) {
+  return (
+    <div className="rounded-[24px] border border-[var(--line)] bg-white/82 p-4">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
+      <div className="mt-3 flex items-end gap-3">
+        <input
+          aria-label={label}
+          inputMode="numeric"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          onKeyDown={onKeyDown}
+          className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-center text-4xl font-bold outline-none transition focus:border-[var(--green)]"
+        />
+        {denominator ? <p className="pb-2 text-xl font-semibold text-[var(--muted)]">/ {denominator}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function EditableNumberField({
+  fieldKey,
+  label,
+  initialValue,
+  denominator,
+  onCommit,
+}: {
+  fieldKey: string;
+  label: string;
+  initialValue: number;
+  denominator?: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(String(initialValue));
+
+  return (
+    <FieldValueInput
+      key={fieldKey}
+      label={label}
+      value={value}
+      denominator={denominator}
+      onChange={setValue}
+      onBlur={() => onCommit(value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+type ActionRowData = {
+  id: string;
+  name: string;
+  typeOrTrigger: string;
+  summary: string;
+  cost: string;
+  disabled?: boolean;
+  disabledReason?: string;
+  details?: string;
+};
+
+function ActionTable({
+  title,
+  rows,
+  feedback,
+  onUse,
+  className,
+}: {
+  title: string;
+  rows: ActionRowData[];
+  feedback: Record<string, string>;
+  onUse: (row: ActionRowData) => void;
+  className?: string;
+}) {
+  return (
+    <ShellCard title={title} className={className}>
+      <div className="overflow-hidden rounded-[22px] border border-[var(--line)]">
+        <div className="hidden grid-cols-[1.1fr_0.8fr_1.6fr_0.8fr_0.5fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+          <span>Name</span>
+          <span>Type / Trigger</span>
+          <span>Summary</span>
+          <span>Cost</span>
+          <span className="text-right">Use</span>
+        </div>
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            className="border-t border-[var(--line)] bg-white/82 px-4 py-3 first:border-t-0 transition hover:bg-[var(--panel-strong)] active:bg-[var(--green-soft)]"
+          >
+            <div className="grid gap-2 md:grid-cols-[1.1fr_0.8fr_1.6fr_0.8fr_0.5fr] md:items-center md:gap-3">
+              <div>
+                <p className="font-semibold">{row.name}</p>
+                {row.details ? <p className="mt-1 text-xs text-[var(--muted)]">{row.details}</p> : null}
+              </div>
+              <p className="text-sm text-[var(--muted)]">{row.typeOrTrigger}</p>
+              <p className="text-sm leading-6 text-[var(--muted)]">{row.summary}</p>
+              <div>
+                <p className="text-sm text-[var(--muted)]">{row.cost}</p>
+                {row.disabledReason ? <p className="mt-1 text-xs text-[var(--red)]">{row.disabledReason}</p> : null}
+              </div>
+              <div className="md:text-right">
+                <button
+                  type="button"
+                  disabled={row.disabled}
+                  onClick={() => onUse(row)}
+                  className={cx(
+                    "min-h-10 rounded-xl px-4 text-sm font-semibold transition",
+                    row.disabled
+                      ? "cursor-not-allowed border border-[var(--line)] bg-white text-[var(--muted)] opacity-70"
+                      : feedback[row.id]
+                        ? "bg-[var(--orange)] text-white"
+                        : "bg-[var(--green)] text-white hover:bg-[#244936]",
+                  )}
+                >
+                  {feedback[row.id] ?? "Use"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </ShellCard>
   );
 }
 
@@ -189,7 +427,7 @@ function TextInput({
       <span>{label}</span>
       <input
         aria-label={label}
-        className="min-h-11 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none ring-0 transition focus:border-[var(--green)]"
+        className="min-h-11 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none transition focus:border-[var(--green)]"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -231,17 +469,34 @@ export function FieldKitApp() {
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [manualLog, setManualLog] = useState("");
   const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionNote, setSessionNote] = useState("");
   const lastSavedRef = useRef("");
   const hydratedRef = useRef(false);
   const writeTimerRef = useRef<number | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const { feedback, pulse } = useTemporaryFeedback();
 
-  const groups = useMemo(() => featureGroups(character.features), [character.features]);
   const filteredSpells = useMemo(
     () => character.spells.filter((spell) => matchesSpellFilter(spell, character.ui.spellFilter)),
     [character.spells, character.ui.spellFilter],
   );
   const activeInfusions = useMemo(() => character.infusionsActive.filter((item) => item.active), [character.infusionsActive]);
+  const pinnedReminders = useMemo(() => character.reminders.filter((item) => item.pinned), [character.reminders]);
+  const regularPreparedSpells = useMemo(
+    () => character.spells.filter((spell) => spell.prepared && !spell.alwaysPrepared),
+    [character.spells],
+  );
+  const currentPreparationId = character.longRest.currentPreparationId;
+  const currentRestElixirs = useMemo(
+    () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
+    [character.elixirs, currentPreparationId],
+  );
+  const expiringElixirs = useMemo(
+    () => character.elixirs.filter((item) => item.expiresOnLongRest && item.createdDuringRestId && item.createdDuringRestId !== currentPreparationId),
+    [character.elixirs, currentPreparationId],
+  );
+  const longRestResources = useMemo(() => character.resources.filter((item) => item.resetType === "long-rest"), [character.resources]);
 
   useEffect(() => {
     window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(character));
@@ -249,13 +504,12 @@ export function FieldKitApp() {
 
   useEffect(() => {
     const services = getFirebaseServices();
-
     if (!isFirebaseConfigured || !services) {
       hydratedRef.current = true;
       return;
     }
 
-    const unsubscribeAuth = listenForGoogleUser(
+    const unsubscribe = listenForGoogleUser(
       services,
       (user) => {
         setFirebaseMode("connected");
@@ -272,46 +526,43 @@ export function FieldKitApp() {
       },
       (message) => {
         setFirebaseMode("local-only");
-        setSyncStatus(`Firebase auth failed: ${message}`);
         hydratedRef.current = true;
+        setSyncStatus(`Firebase auth failed: ${message}`);
       },
     );
 
-    return () => {
-      unsubscribeAuth();
-    };
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     const services = getFirebaseServices();
-
     if (!services || !userId) {
       return;
     }
 
-    const unsubscribeCharacter = subscribeToCharacter(
+    const unsubscribe = subscribeToCharacter(
       services,
       userId,
       (data) => {
         hydratedRef.current = true;
-        const serialized = JSON.stringify(data);
+        const hydrated = hydrateCharacter(data);
+        const serialized = JSON.stringify(hydrated);
         lastSavedRef.current = serialized;
-        setCharacter(data);
+        setCharacter(hydrated);
         setSyncStatus("Firestore synced.");
       },
       async () => {
-        await saveCharacter(services, userId, createSeedCharacter());
+        const seed = createSeedCharacter();
+        syncDerivedState(seed);
+        await saveCharacter(services, userId, seed);
       },
     );
 
-    return () => {
-      unsubscribeCharacter();
-    };
+    return () => unsubscribe();
   }, [userId]);
 
   useEffect(() => {
     const services = getFirebaseServices();
-
     if (!services || !userId || !hydratedRef.current) {
       return;
     }
@@ -336,224 +587,59 @@ export function FieldKitApp() {
     }, 500);
   }, [character, userId]);
 
-  function commit(label: string, updater: (draft: CharacterData) => void) {
-    setCharacter((current) => {
-      const snapshot = cloneCharacter(current);
-      const draft = cloneCharacter(current);
-      updater(draft);
-      setUndoState({ label, snapshot });
-      return draft;
-    });
-  }
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, TOAST_TIMEOUT_MS);
+  }, [toast]);
 
   function addLog(draft: CharacterData, text: string) {
     draft.eventLog.unshift(stampLog(text, draft.currentSessionLabel));
   }
 
-  function updateResource(resourceId: string, nextValue: number, reason: string) {
-    commit(reason, (draft) => {
-      const resource = draft.resources.find((item) => item.id === resourceId);
-      if (!resource) return;
-      resource.current = Math.max(0, Math.min(resource.max, nextValue));
-      if (resourceId === "veech-hp") {
-        draft.companion.currentHp = resource.current;
-      }
-      addLog(draft, `${reason}: ${resource.name} is now ${resource.current}/${resource.max}.`);
+  function commit(label: string, updater: (draft: CharacterData) => void) {
+    setCharacter((current) => {
+      const snapshot = cloneCharacter(current);
+      const draft = cloneCharacter(current);
+      updater(draft);
+      syncDerivedState(draft);
+      setUndoState({ label, snapshot });
+      return draft;
     });
   }
 
-  function spendResource(resourceId: string, delta: number, actionLabel: string) {
-    const resource = character.resources.find((item) => item.id === resourceId);
-    if (!resource) return;
-    if (!window.confirm(`${actionLabel}\n\n${resource.name}: ${resource.current}/${resource.max}`)) return;
-    updateResource(resourceId, resource.current + delta, actionLabel);
-  }
-
-  function castSpell(spell: Spell) {
-    if (!window.confirm(`Cast ${spell.name}?`)) return;
-    commit(`Cast ${spell.name}`, (draft) => {
-      if (spell.level > 0) {
-        const slotId = spell.level === 1 ? "slot1" : "slot2";
-        const slot = draft.resources.find((item) => item.id === slotId);
-        if (slot && slot.current > 0) {
-          slot.current -= 1;
-        }
-      }
-      addLog(draft, `Cast ${spell.name}${spell.level > 0 ? ` using a level ${spell.level} slot` : ""}.`);
+  function showToast(message: string, undoable = true, tone: ToastState["tone"] = "success") {
+    setToast({
+      id: crypto.randomUUID(),
+      message,
+      undoable,
+      tone,
     });
   }
 
-  function consumeElixir(elixirId: string) {
-    commit("Consumed elixir", (draft) => {
-      const elixir = draft.elixirs.find((item) => item.id === elixirId);
-      if (!elixir) return;
-      elixir.consumed = !elixir.consumed;
-      addLog(draft, `${elixir.consumed ? "Used" : "Restored"} ${elixir.name}.`);
-    });
+  function performAction(options: {
+    actionId: string;
+    label: string;
+    toastMessage: string;
+    updater: (draft: CharacterData) => void;
+    tone?: ToastState["tone"];
+  }) {
+    if (feedback[options.actionId]) {
+      return;
+    }
+
+    pulse(options.actionId, options.label);
+    commit(options.toastMessage, options.updater);
+    showToast(options.toastMessage, true, options.tone ?? "success");
   }
-
-  function createElixir() {
-    const effect = window.prompt(`Which elixir effect?\n\n${elixirOptions.join("\n")}`, elixirOptions[0]);
-    if (!effect) return;
-    const holder = window.prompt("Who is holding it?", "Brek") ?? "Brek";
-    const slotLevel = window.prompt("Spend which slot level? (1 or 2)", "1") ?? "1";
-    commit("Created elixir", (draft) => {
-      const slot = draft.resources.find((item) => item.id === `slot${slotLevel}`);
-      if (slot && slot.current > 0) {
-        slot.current -= 1;
-      }
-      const resource = draft.resources.find((item) => item.id === "elixirs");
-      if (resource) {
-        resource.current = Math.min(resource.max + 20, resource.current + 1);
-      }
-      draft.elixirs.unshift({
-        id: crypto.randomUUID(),
-        name: effect.split(":")[0],
-        effect,
-        holder,
-        consumed: false,
-        duration: effect.includes("1 hour") ? "1 hour" : effect.includes("10 minutes") ? "10 minutes" : "Instant",
-      });
-      addLog(draft, `Created an additional elixir: ${effect}.`);
-    });
-  }
-
-  function runReset(resetType: "short-rest" | "long-rest" | "dawn") {
-    const label = resetType === "long-rest" ? "Complete long rest" : resetType === "short-rest" ? "Complete short rest" : "Run dawn reset";
-    if (!window.confirm(`${label}?`)) return;
-
-    commit(label, (draft) => {
-      draft.resources.forEach((resource) => {
-        if (resetType === "long-rest" && (resource.resetType === "long-rest" || resource.resetType === "short-rest")) {
-          resource.current = resource.max;
-        }
-        if (resetType === "short-rest" && resource.resetType === "short-rest") {
-          resource.current = resource.max;
-        }
-        if (resetType === "dawn" && resource.resetType === "dawn") {
-          resource.current = resource.max;
-        }
-      });
-
-      if (resetType === "long-rest") {
-        draft.stats.currentHp = draft.stats.maxHp;
-        draft.stats.tempHp = 0;
-        draft.companion.currentHp = draft.companion.maxHp;
-        draft.resources.find((item) => item.id === "veech-hp")!.current = draft.companion.maxHp;
-        draft.restChecklist.forEach((item) => {
-          item.checked = false;
-        });
-      }
-
-      addLog(draft, `${label}.`);
-      if (sessionNote.trim()) {
-        addLog(draft, `Session note: ${sessionNote.trim()}`);
-      }
-    });
-    setSessionNote("");
-  }
-
-  function updateHp(field: "currentHp" | "tempHp", amount: number, mode: "delta" | "set") {
-    commit(`Updated ${field === "currentHp" ? "current HP" : "temp HP"}`, (draft) => {
-      const currentValue = draft.stats[field];
-      draft.stats[field] = mode === "delta" ? Math.max(0, currentValue + amount) : Math.max(0, amount);
-      addLog(draft, `${field === "currentHp" ? "Current HP" : "Temp HP"} set to ${draft.stats[field]}.`);
-    });
-  }
-
-  function updateCompanionHp(amount: number, mode: "delta" | "set") {
-    commit("Updated Veech HP", (draft) => {
-      const currentValue = draft.companion.currentHp;
-      draft.companion.currentHp = mode === "delta" ? Math.max(0, Math.min(draft.companion.maxHp, currentValue + amount)) : Math.max(0, Math.min(draft.companion.maxHp, amount));
-      const veechResource = draft.resources.find((item) => item.id === "veech-hp");
-      if (veechResource) {
-        veechResource.current = draft.companion.currentHp;
-      }
-      addLog(draft, `Veech HP is now ${draft.companion.currentHp}/${draft.companion.maxHp}.`);
-    });
-  }
-
-  function addManualLog() {
-    if (!manualLog.trim()) return;
-    commit("Added manual log", (draft) => {
-      addLog(draft, manualLog.trim());
-    });
-    setManualLog("");
-  }
-
-  function startNewSession() {
-    const label = window.prompt("New session label", `Session ${character.eventLog.length + 1}`);
-    if (!label) return;
-    commit("Started new session", (draft) => {
-      draft.currentSessionLabel = label;
-      addLog(draft, `Started ${label}.`);
-    });
-  }
-
-  function undoLastAction() {
-    if (!undoState) return;
-    setCharacter(undoState.snapshot);
-    setUndoState(null);
-    setSyncStatus(`Undid: ${undoState.label}`);
-  }
-
-  function updateAttack(index: number, updater: (attack: Attack) => void) {
-    commit("Updated attack", (draft) => {
-      const target = draft.attacks[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateSpell(index: number, updater: (spell: Spell) => void) {
-    commit("Updated spell", (draft) => {
-      const target = draft.spells[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateResourceRow(index: number, updater: (resource: Resource) => void) {
-    commit("Updated resource", (draft) => {
-      const target = draft.resources[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateTool(index: number, updater: (tool: ToolEntry) => void) {
-    commit("Updated tool entry", (draft) => {
-      const target = draft.tools[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateInventory(index: number, updater: (category: InventoryCategory) => void) {
-    commit("Updated inventory", (draft) => {
-      const target = draft.inventory[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateChecklist(index: number, updater: (item: ChecklistItem) => void) {
-    commit("Updated checklist", (draft) => {
-      const target = draft.restChecklist[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateActiveInfusion(index: number, updater: (item: ActiveInfusion) => void) {
-    commit("Updated active infusion", (draft) => {
-      const target = draft.infusionsActive[index];
-      if (target) updater(target);
-    });
-  }
-
-  function updateReminder(index: number, updater: (item: Reminder) => void) {
-    commit("Updated reminder", (draft) => {
-      const target = draft.reminders[index];
-      if (target) updater(target);
-    });
-  }
-
-  const pinnedReminders = character.reminders.filter((item) => item.pinned);
 
   async function handleGoogleSignIn() {
     const services = getFirebaseServices();
@@ -572,15 +658,359 @@ export function FieldKitApp() {
 
   async function handleSignOut() {
     const services = getFirebaseServices();
-    if (!services) {
-      return;
-    }
+    if (!services) return;
 
     try {
       await signOutUser(services);
       setSyncStatus("Signed out.");
     } catch (error) {
       setSyncStatus(error instanceof Error ? `Sign-out failed: ${error.message}` : "Sign-out failed.");
+    }
+  }
+
+  function undoLastAction() {
+    if (!undoState) return;
+    setCharacter(undoState.snapshot);
+    setSyncStatus(`Undid: ${undoState.label}`);
+    setUndoState(null);
+    setToast(null);
+  }
+
+  function changeView(view: NavView) {
+    setCharacter((current) => ({
+      ...current,
+      ui: {
+        ...current.ui,
+        activeView: view,
+      },
+    }));
+  }
+
+  function saveTypedHp(field: "currentHp" | "tempHp", raw: string) {
+    const oldValue = character.stats[field];
+    const max = field === "currentHp" ? character.stats.maxHp : Number.MAX_SAFE_INTEGER;
+    const next = Math.max(0, Math.min(max, numberValue(raw)));
+    if (next === oldValue) {
+      return;
+    }
+
+    commit(`Updated ${field}`, (draft) => {
+      draft.stats[field] = next;
+      addLog(draft, `${field === "currentHp" ? "Current HP" : "Temporary HP"} changed from ${oldValue} to ${next}.`);
+    });
+    showToast(`${field === "currentHp" ? "Current HP" : "Temp HP"} updated to ${next}.`);
+  }
+
+  function updateResource(resourceId: string, delta: number, verb: "Spent" | "Restored") {
+    const resource = character.resources.find((item) => item.id === resourceId);
+    if (!resource) return;
+    const next = Math.max(0, Math.min(resource.max, resource.current + delta));
+    if (next === resource.current) return;
+
+    performAction({
+      actionId: `${verb}-${resourceId}`,
+      label: verb === "Spent" ? "Spent" : "Restored",
+      toastMessage: `${resource.name} ${verb === "Spent" ? "used" : "restored"} — ${next}/${resource.max}`,
+      updater: (draft) => {
+        const target = draft.resources.find((item) => item.id === resourceId);
+        if (!target) return;
+        const previous = target.current;
+        target.current = next;
+        addLog(draft, `${verb} ${Math.abs(next - previous)} ${resource.name}. It is now ${target.current}/${target.max}.`);
+      },
+    });
+  }
+
+  function castSpell(spell: Spell) {
+    const actionId = `spell-${spell.id}`;
+    performAction({
+      actionId,
+      label: "Cast",
+      toastMessage: spell.level > 0 ? `${spell.name} cast — slot spent` : `${spell.name} cast`,
+      updater: (draft) => {
+        if (spell.level > 0) {
+          const slot = draft.resources.find((item) => item.id === `slot${spell.level}`);
+          if (slot && slot.current > 0) {
+            slot.current -= 1;
+          }
+        }
+        addLog(draft, `Cast ${spell.name}${spell.level > 0 ? ` using a level ${spell.level} slot` : ""}.`);
+      },
+    });
+  }
+
+  function togglePrepared(spellId: string) {
+    commit("Updated prepared spell", (draft) => {
+      const spell = draft.spells.find((item) => item.id === spellId);
+      if (spell && !spell.alwaysPrepared) {
+        spell.prepared = !spell.prepared;
+      }
+    });
+  }
+
+  function toggleConsumeElixir(elixirId: string) {
+    const target = character.elixirs.find((item) => item.id === elixirId);
+    if (!target) return;
+
+    performAction({
+      actionId: `elixir-${elixirId}`,
+      label: target.consumed ? "Restored" : "Used",
+      toastMessage: target.consumed ? `${target.name} marked unused` : `${target.name} used`,
+      updater: (draft) => {
+        const elixir = draft.elixirs.find((item) => item.id === elixirId);
+        if (!elixir) return;
+        elixir.consumed = !elixir.consumed;
+        addLog(draft, `${elixir.consumed ? "Used" : "Restored"} ${elixir.name}.`);
+      },
+    });
+  }
+
+  function createAdditionalElixirFromAction() {
+    if (character.longRest.emptyFlasks <= 0) {
+      showToast("No empty flasks available for an additional elixir.", false, "default");
+      return;
+    }
+
+    const slotLevel = window.prompt("Choose spell slot level to spend (1 or 2).", "1");
+    if (!slotLevel || !["1", "2"].includes(slotLevel)) return;
+    const effect = window.prompt(`Choose elixir effect:\n${LONG_REST_ELIXIRS.join("\n")}`, "Healing");
+    if (!effect) return;
+    const holder = window.prompt("Who holds the elixir?", "Brek") ?? "Brek";
+    const notes = window.prompt("Optional note", "") ?? "";
+    const sourceEffect = buildElixirEffect(effect);
+    const slot = character.resources.find((item) => item.id === `slot${slotLevel}`);
+    if (!slot || slot.current <= 0) {
+      showToast(`No level ${slotLevel} slots remaining.`, false, "default");
+      return;
+    }
+
+    performAction({
+      actionId: "action-extra-elixir",
+      label: "Created",
+      toastMessage: `Additional ${effect} elixir created`,
+      updater: (draft) => {
+        const targetSlot = draft.resources.find((item) => item.id === `slot${slotLevel}`);
+        if (targetSlot) {
+          targetSlot.current -= 1;
+        }
+        draft.longRest.emptyFlasks = Math.max(0, draft.longRest.emptyFlasks - 1);
+        draft.elixirs.unshift(
+          buildElixirFromSelection({
+            name: `${effect} Elixir`,
+            effect: sourceEffect,
+            holder,
+            notes,
+            source: "additional",
+            duration: "Until consumed or the end of Brek's next long rest",
+            createdDuringRestId: draft.longRest.currentPreparationId,
+            expiresOnLongRest: true,
+          }),
+        );
+        addLog(draft, `Created an additional Experimental Elixir (${effect}) using a level ${slotLevel} spell slot.`);
+      },
+    });
+  }
+
+  function createLongRestElixir() {
+    if (currentRestElixirs.length >= 2) {
+      showToast("Both long-rest elixirs are already created for this rest.", false, "default");
+      return;
+    }
+    if (character.longRest.emptyFlasks <= 0) {
+      showToast("No empty flasks available for a long-rest elixir.", false, "default");
+      return;
+    }
+
+    const result = window.prompt(`Roll or choose the result:\n${LONG_REST_ELIXIRS.join("\n")}`, "Healing");
+    if (!result) return;
+    const holder = window.prompt("Who holds it?", "Brek") ?? "Brek";
+    const notes = window.prompt("Optional note", "") ?? "";
+
+    performAction({
+      actionId: `long-rest-elixir-${currentRestElixirs.length}`,
+      label: "Created",
+      toastMessage: `${result} long-rest elixir created`,
+      updater: (draft) => {
+        draft.longRest.emptyFlasks = Math.max(0, draft.longRest.emptyFlasks - 1);
+        draft.elixirs.unshift(
+          buildElixirFromSelection({
+            name: `${result} Elixir`,
+            effect: buildElixirEffect(result),
+            holder,
+            notes,
+            source: "long-rest",
+            duration: "Until consumed or the end of Brek's next long rest",
+            createdDuringRestId: draft.longRest.currentPreparationId,
+            expiresOnLongRest: true,
+          }),
+        );
+        addLog(draft, `Prepared a long-rest Experimental Elixir (${result}).`);
+      },
+    });
+  }
+
+  function completeLongRest() {
+    const createdNames = currentRestElixirs.map((item) => item.name).join(", ") || "none";
+    const expiringNames = expiringElixirs.map((item) => item.name).join(", ") || "none";
+    const summary = [
+      "Complete long rest?",
+      "",
+      "Automatic resets:",
+      ...longRestResources.map((item) => `- ${item.name} to ${item.max}`),
+      `- Current HP to ${character.stats.maxHp}`,
+      "",
+      `Expiring elixirs: ${expiringNames}`,
+      `New long-rest elixirs: ${createdNames}`,
+      `Active infusions retained: ${activeInfusions.map((item) => item.infusionName).join(", ") || "none"}`,
+    ].join("\n");
+
+    if (!window.confirm(summary)) {
+      return;
+    }
+
+    commit("Completed long rest", (draft) => {
+      draft.elixirs = draft.elixirs.filter((item) => !(item.expiresOnLongRest && item.createdDuringRestId && item.createdDuringRestId !== draft.longRest.currentPreparationId));
+      draft.resources.forEach((item) => {
+        if (item.resetType === "long-rest" || item.resetType === "short-rest") {
+          item.current = item.max;
+        }
+      });
+      draft.stats.currentHp = draft.stats.maxHp;
+      draft.stats.tempHp = 0;
+      draft.companion.currentHp = draft.companion.maxHp;
+      const created = draft.elixirs
+        .filter((item) => item.source === "long-rest" && item.createdDuringRestId === draft.longRest.currentPreparationId)
+        .map((item) => item.name.replace(" Elixir", ""));
+      addLog(
+        draft,
+        `Completed a long rest. Restored spell slots, Flash of Genius, Lucky, and Fury of the Small. Created ${created.length || 0} Experimental Elixirs${created.length ? `: ${created.join(" and ")}` : ""}.`,
+      );
+      if (draft.longRest.notes.trim()) {
+        addLog(draft, `Long-rest note: ${draft.longRest.notes.trim()}`);
+      }
+      draft.longRest.currentPreparationId = crypto.randomUUID();
+      draft.longRest.notes = "";
+    });
+    showToast("Long rest completed.");
+  }
+
+  function startNewSession() {
+    const label = window.prompt("New session label", `Session ${character.eventLog.length + 1}`);
+    if (!label) return;
+    commit("Started new session", (draft) => {
+      draft.currentSessionLabel = label;
+      addLog(draft, `Started ${label}.`);
+    });
+  }
+
+  function buildActionRows(section: "action" | "bonus" | "reaction" | "passive") {
+    if (section === "action") {
+      const attackRows: ActionRowData[] = character.attacks.map((attack) => ({
+        id: attack.id,
+        name: attack.name,
+        typeOrTrigger: "Action",
+        summary: `${attack.attackBonus} to hit, ${attack.damage} ${attack.damageType}, ${attack.range}`,
+        cost: "—",
+        details: attack.traits.join(", "),
+      }));
+      const featureRows = character.features
+        .filter((item) => item.category === "action")
+        .map((item) => {
+          const noSlots = character.resources.filter((entry) => entry.id.startsWith("slot")).every((entry) => entry.current <= 0);
+          const noFlasks = character.longRest.emptyFlasks <= 0;
+          const disabled = item.id === "action-extra-elixir" ? noSlots || noFlasks : false;
+          return {
+            id: item.id,
+            name: item.name,
+            typeOrTrigger: item.trigger,
+            summary: item.effect,
+            cost: item.id === "action-extra-elixir" ? "1st+ spell slot" : "—",
+            disabled,
+            disabledReason:
+              item.id === "action-extra-elixir" && noSlots
+                ? "No spell slots remaining."
+                : item.id === "action-extra-elixir" && noFlasks
+                  ? "No empty flasks available."
+                  : undefined,
+            details: item.id === "action-extra-elixir" ? "Requires alchemist's supplies and an empty flask." : item.range ? `Range ${item.range}` : undefined,
+          };
+        });
+      return [...attackRows, ...featureRows];
+    }
+
+    return character.features
+      .filter((item) => item.category === section)
+      .map((item) => {
+        const resource = item.resourceId ? character.resources.find((entry) => entry.id === item.resourceId) : null;
+        const disabled = Boolean(resource && resource.current <= 0);
+        return {
+          id: item.id,
+          name: item.name,
+          typeOrTrigger: item.trigger,
+          summary: item.effect,
+          cost: resource ? `${resource.current}/${resource.max}` : "—",
+          disabled,
+          disabledReason: disabled ? "No uses remaining." : undefined,
+          details: item.range ? `Range ${item.range}` : undefined,
+        };
+      });
+  }
+
+  function handleActionRowUse(row: ActionRowData, section: "action" | "bonus" | "reaction" | "passive") {
+    const feature = character.features.find((item) => item.id === row.id);
+    const attack = character.attacks.find((item) => item.id === row.id);
+
+    if (attack) {
+      performAction({
+        actionId: row.id,
+        label: "Logged",
+        toastMessage: `${attack.name} action logged`,
+        updater: (draft) => addLog(draft, `Used ${attack.name}: ${attack.attackBonus} to hit, ${attack.damage} ${attack.damageType}.`),
+      });
+      return;
+    }
+
+    if (!feature) return;
+    if (feature.id === "action-extra-elixir") {
+      createAdditionalElixirFromAction();
+      return;
+    }
+
+    performAction({
+      actionId: row.id,
+      label: feature.category === "reaction" ? "Used" : "Logged",
+      toastMessage:
+        feature.resourceId && row.cost !== "—"
+          ? `${feature.name} used — ${Math.max(0, (character.resources.find((item) => item.id === feature.resourceId)?.current ?? 1) - 1)} remaining`
+          : `${feature.name} ${section === "passive" ? "noted" : "logged"}`,
+      updater: (draft) => {
+        if (feature.resourceId) {
+          const resource = draft.resources.find((item) => item.id === feature.resourceId);
+          if (resource && resource.current > 0) {
+            resource.current -= 1;
+          }
+        }
+        addLog(draft, feature.name);
+      },
+    });
+  }
+
+  function buildElixirEffect(result: string) {
+    switch (result) {
+      case "Healing":
+        return "Regain 2d4 + Intelligence modifier HP";
+      case "Swiftness":
+        return "+10 ft. walking speed for 1 hour";
+      case "Resilience":
+        return "+1 AC for 10 minutes";
+      case "Boldness":
+        return "Add 1d4 to attack rolls and saving throws for 1 minute";
+      case "Flight":
+        return "Fly speed 10 ft. for 10 minutes";
+      case "Transformation":
+        return "Alter Self effect for 10 minutes";
+      default:
+        return result;
     }
   }
 
@@ -601,16 +1031,10 @@ export function FieldKitApp() {
             <p className="mt-5 text-base leading-7 text-[var(--muted)]">
               Sign in with Google to load your Firestore-backed field kit on GitHub Pages. Once you&apos;re in, the app will seed Brek automatically if this is your first session.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                className="flex min-h-12 items-center gap-3 rounded-2xl bg-[var(--green)] px-5 text-white"
-              >
-                <LogIn className="h-5 w-5" />
-                Sign in with Google
-              </button>
-            </div>
+            <button type="button" onClick={handleGoogleSignIn} className="mt-6 flex min-h-12 items-center gap-3 rounded-2xl bg-[var(--green)] px-5 text-white">
+              <LogIn className="h-5 w-5" />
+              Sign in with Google
+            </button>
             <p className="mt-4 text-sm text-[var(--muted)]">{syncStatus}</p>
           </ShellCard>
         </div>
@@ -629,7 +1053,7 @@ export function FieldKitApp() {
                   <FlaskConical className="h-6 w-6" />
                 </div>
                 <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Brek&rsquo;s Field Kit</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Brek&apos;s Field Kit</p>
                   <h1 className="text-3xl leading-none">Session Dashboard</h1>
                 </div>
               </div>
@@ -638,7 +1062,7 @@ export function FieldKitApp() {
                   <button
                     key={id}
                     type="button"
-                    onClick={() => commit("Changed view", (draft) => void (draft.ui.activeView = id))}
+                    onClick={() => changeView(id)}
                     className={cx(
                       "flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-left transition",
                       character.ui.activeView === id ? "bg-[var(--green)] text-white" : "bg-white/70 text-[var(--text)] hover:bg-[var(--green-soft)]",
@@ -654,7 +1078,7 @@ export function FieldKitApp() {
             <ShellCard title="Sync Status">
               <p className="text-sm text-[var(--muted)]">{syncStatus}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-                {firebaseMode === "connected" ? `Firestore active${userLabel ? ` • ${userLabel}` : userId ? ` • ${userId.slice(0, 8)}` : ""}` : "Local cache only"}
+                {firebaseMode === "connected" ? `Firestore active${userLabel ? ` • ${userLabel}` : ""}` : "Local cache only"}
               </p>
               {firebaseMode === "connected" ? (
                 <button type="button" onClick={handleSignOut} className="mt-4 flex min-h-11 items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 text-sm">
@@ -673,7 +1097,7 @@ export function FieldKitApp() {
 
         <section className="space-y-4">
           <ShellCard className="overflow-hidden bg-[linear-gradient(135deg,rgba(255,248,236,0.98),rgba(240,247,241,0.98))]">
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr]">
               <div className="space-y-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -689,18 +1113,57 @@ export function FieldKitApp() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <LabelValue label="AC" value={character.stats.ac} />
-                  <LabelValue label="Initiative" value={character.stats.initiative} />
-                  <LabelValue label="Spell Save DC" value={character.stats.spellSaveDc} />
-                  <LabelValue label="Spell Attack" value={character.stats.spellAttackBonus} />
+                  <StatPill label="AC" value={character.stats.ac} />
+                  <StatPill label="Initiative" value={character.stats.initiative} />
+                  <StatPill label="Spell Save DC" value={character.stats.spellSaveDc} />
+                  <StatPill label="Spell Attack" value={character.stats.spellAttackBonus} />
+                  <StatPill label="Speed" value={character.stats.speed} />
+                  <StatPill label="Intelligence Modifier" value={character.stats.intelligenceModifier} />
+                  <StatPill label="Proficiency Bonus" value={character.stats.proficiencyBonus} />
+                  <StatPill label="Darkvision" value={character.stats.darkvision} />
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <LabelValue label="Speed" value={character.stats.speed} />
-                  <LabelValue label="Int Mod" value={character.stats.intelligenceModifier} />
-                  <LabelValue label="Prof Bonus" value={character.stats.proficiencyBonus} />
-                  <LabelValue label="Darkvision" value={character.stats.darkvision} />
-                </div>
+                {character.ui.activeView === "dashboard" ? (
+                  <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                    <ShellCard title="Ability Scores" subtitle="High-frequency numbers stay above the fold.">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {ABILITY_ORDER.map((ability) => (
+                          <AbilityBox
+                            key={ability}
+                            label={ability.slice(0, 3)}
+                            modifier={character.abilities[ability].modifier}
+                            score={character.abilities[ability].score}
+                          />
+                        ))}
+                      </div>
+                    </ShellCard>
+
+                    <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
+                      <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                        <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                          <span>Save</span>
+                          <span className="text-right">Total</span>
+                          <span className="text-right">Prof</span>
+                        </div>
+                        {ABILITY_ORDER.map((ability) => {
+                          const save = character.savingThrows[ability];
+                          return (
+                            <div key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 text-sm">
+                              <span>{ability.slice(0, 3).toUpperCase()}</span>
+                              <span className="text-right font-semibold">{formatSigned(save.value)}</span>
+                              <span className="text-right font-semibold">{save.proficient ? "● P" : "—"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
+                        <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on saving throws to avoid or end the charmed condition.</p>
+                        <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
+                        <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
+                      </div>
+                    </ShellCard>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-3 rounded-[28px] border border-[var(--line)] bg-white/70 p-4">
@@ -708,48 +1171,19 @@ export function FieldKitApp() {
                   <HeartPulse className="h-5 w-5 text-[var(--red)]" />
                   <h2 className="text-lg font-semibold">Vital Tracker</h2>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <LabelValue label="Max HP" value={character.stats.maxHp} />
-                  <LabelValue label="Current HP" value={character.stats.currentHp} />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => updateHp("currentHp", -1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white/90">
-                    Current HP -1
-                  </button>
-                  <button type="button" onClick={() => updateHp("currentHp", 1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white/90">
-                    Current HP +1
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = window.prompt("Set current HP", String(character.stats.currentHp));
-                    if (next === null) return;
-                    updateHp("currentHp", numberValue(next), "set");
-                  }}
-                  className="min-h-11 rounded-2xl bg-[var(--green)] px-4 text-white"
-                >
-                  Set Current HP
-                </button>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => updateHp("tempHp", -1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white/90">
-                    Temp HP -1
-                  </button>
-                  <button type="button" onClick={() => updateHp("tempHp", 1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white/90">
-                    Temp HP +1
-                  </button>
-                </div>
-                <p className="text-sm text-[var(--muted)]">Temporary HP: {character.stats.tempHp}</p>
+                <StatPill label="Max HP" value={character.stats.maxHp} />
+                <EditableNumberField fieldKey={`current-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => saveTypedHp("currentHp", value)} />
+                <EditableNumberField fieldKey={`temp-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => saveTypedHp("tempHp", value)} />
               </div>
             </div>
           </ShellCard>
 
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
-              <ShellCard title="Quick Resource Strip" subtitle="Click into the counters only when you mean it. Spend and restore both ask for confirmation.">
+              <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {character.resources.map((resource) => (
-                    <div key={resource.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
+                    <div key={resource.id} className="rounded-[22px] border border-[var(--line)] bg-white/82 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-semibold">{resource.name}</h3>
@@ -759,13 +1193,13 @@ export function FieldKitApp() {
                           {resource.current}/{resource.max}
                         </span>
                       </div>
-                      {resource.notes ? <p className="mt-3 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
+                      {resource.notes ? <p className="mt-2 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
                       <div className="mt-4 grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => spendResource(resource.id, -1, `Spent 1 ${resource.name}`)} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                          Spend
+                        <button type="button" onClick={() => updateResource(resource.id, -1, "Spent")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
+                          {feedback[`Spent-${resource.id}`] ?? "Spend"}
                         </button>
-                        <button type="button" onClick={() => spendResource(resource.id, 1, `Restored 1 ${resource.name}`)} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                          Restore
+                        <button type="button" onClick={() => updateResource(resource.id, 1, "Restored")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
+                          {feedback[`Restored-${resource.id}`] ?? "Restore"}
                         </button>
                       </div>
                     </div>
@@ -773,11 +1207,11 @@ export function FieldKitApp() {
                 </div>
               </ShellCard>
 
-              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-                <ShellCard title="Do Not Forget" subtitle="Pinned reminders stay surfaced until you unpin or edit them in setup.">
-                  <div className="grid gap-3">
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                <ShellCard title="Do Not Forget" subtitle="Pinned reminders stay visible, but the layout is denser and easier to scan.">
+                  <div className="grid gap-2">
                     {pinnedReminders.map((reminder) => (
-                      <div key={reminder.id} className="rounded-[24px] border border-[var(--line)] bg-white/75 p-4">
+                      <div key={reminder.id} className="grid gap-2 rounded-[20px] border border-[var(--line)] bg-white/78 px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <h3 className="font-semibold">{reminder.title}</h3>
                           <button
@@ -788,18 +1222,18 @@ export function FieldKitApp() {
                                 if (target) target.pinned = !target.pinned;
                               })
                             }
-                            className="min-h-11 rounded-2xl border border-[var(--line)] px-3 text-sm"
+                            className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm"
                           >
-                            {reminder.pinned ? "Unpin" : "Pin"}
+                            Unpin
                           </button>
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{reminder.summary}</p>
+                        <p className="text-sm leading-6 text-[var(--muted)]">{reminder.summary}</p>
                       </div>
                     ))}
                   </div>
                 </ShellCard>
 
-                <ShellCard title="Quick Decision Prompts" subtitle="Expanded by default so the good ideas are already on the table.">
+                <ShellCard title="Quick Decision Prompts" subtitle="Still collapsible, but written as compact table-note prompts instead of oversized cards.">
                   <button
                     type="button"
                     onClick={() =>
@@ -812,27 +1246,9 @@ export function FieldKitApp() {
                     {character.decisionPrompts.expanded ? "Collapse prompts" : "Expand prompts"}
                   </button>
                   {character.decisionPrompts.expanded ? (
-                    <div className="grid gap-4">
-                      <div>
-                        <h3 className="font-semibold text-[var(--green)]">Before acting</h3>
-                        <ul className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted)]">
-                          {character.decisionPrompts.beforeActing.map((prompt) => (
-                            <li key={prompt} className="rounded-2xl border border-[var(--line)] bg-white/75 px-4 py-3">
-                              {prompt}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-[var(--orange)]">When a roll happens</h3>
-                        <ul className="mt-3 grid gap-2 text-sm leading-6 text-[var(--muted)]">
-                          {character.decisionPrompts.whenRollHappens.map((prompt) => (
-                            <li key={prompt} className="rounded-2xl border border-[var(--line)] bg-white/75 px-4 py-3">
-                              {prompt}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="space-y-4">
+                      <PromptBlock title="Before Acting" prompts={character.decisionPrompts.beforeActing} />
+                      <PromptBlock title="When a Roll Happens" prompts={character.decisionPrompts.whenRollHappens} accent="orange" />
                     </div>
                   ) : null}
                 </ShellCard>
@@ -842,78 +1258,10 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "combat" ? (
             <div className="space-y-4">
-              <ShellCard title="Action">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {character.attacks.map((attack) => (
-                    <div key={attack.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-lg font-semibold">{attack.name}</h3>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            commit(`Used ${attack.name}`, (draft) => {
-                              addLog(draft, `Used ${attack.name}: ${attack.attackBonus} to hit, ${attack.damage} ${attack.damageType}.`);
-                            })
-                          }
-                          className="min-h-11 rounded-2xl bg-[var(--green)] px-4 text-white"
-                        >
-                          Use
-                        </button>
-                      </div>
-                      <div className="mt-3 grid gap-2 text-sm text-[var(--muted)]">
-                        <p>Attack bonus: {attack.attackBonus}</p>
-                        <p>Damage: {attack.damage} {attack.damageType}</p>
-                        <p>Range: {attack.range}</p>
-                        <p>Traits: {attack.traits.join(", ")}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {groups.action.map((feature) => (
-                    <FeatureCard key={feature.id} feature={feature} onUse={() => commit(`Used ${feature.name}`, (draft) => addLog(draft, feature.name))} />
-                  ))}
-                </div>
-              </ShellCard>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <ShellCard title="Bonus Action">
-                  <div className="grid gap-3">
-                    {groups.bonus.map((feature) => (
-                      <FeatureCard key={feature.id} feature={feature} onUse={() => commit(`Used ${feature.name}`, (draft) => addLog(draft, feature.name))} />
-                    ))}
-                  </div>
-                </ShellCard>
-
-                <ShellCard title="Reaction" subtitle="Reaction options stay loud on purpose.">
-                  <div className="grid gap-3">
-                    {groups.reaction.map((feature) => (
-                      <FeatureCard
-                        key={feature.id}
-                        feature={feature}
-                        emphasize
-                        onUse={() => {
-                          if (feature.resourceId) {
-                            spendResource(feature.resourceId, -1, `Used ${feature.name}`);
-                            return;
-                          }
-                          commit(`Used ${feature.name}`, (draft) => addLog(draft, feature.name));
-                        }}
-                      />
-                    ))}
-                  </div>
-                </ShellCard>
-              </div>
-
-              <ShellCard title="Passive / Triggered Benefits">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {groups.passive.map((feature) => (
-                    <div key={feature.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <h3 className="font-semibold">{feature.name}</h3>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Trigger: {feature.trigger}</p>
-                      <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{feature.effect}</p>
-                    </div>
-                  ))}
-                </div>
-              </ShellCard>
+              <ActionTable title="Actions" rows={buildActionRows("action")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "action")} />
+              <ActionTable title="Bonus Actions" rows={buildActionRows("bonus")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "bonus")} />
+              <ActionTable title="Reactions" rows={buildActionRows("reaction")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "reaction")} />
+              <ActionTable title="Passive / Triggered Benefits" rows={buildActionRows("passive")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "passive")} />
             </div>
           ) : null}
 
@@ -926,9 +1274,13 @@ export function FieldKitApp() {
                       key={filter}
                       type="button"
                       onClick={() =>
-                        commit("Changed spell filter", (draft) => {
-                          draft.ui.spellFilter = filter;
-                        })
+                        setCharacter((current) => ({
+                          ...current,
+                          ui: {
+                            ...current.ui,
+                            spellFilter: filter,
+                          },
+                        }))
                       }
                       className={cx(
                         "min-h-11 rounded-full px-4 text-sm",
@@ -941,72 +1293,60 @@ export function FieldKitApp() {
                 </div>
               </ShellCard>
 
-              <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-                <ShellCard title="Spells" subtitle="Purpose-first scanning with prepared state, cast actions, and quick notes.">
-                  <div className="grid gap-3">
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                <ShellCard title="Spells">
+                  <div className="grid gap-2">
                     {filteredSpells.map((spell) => (
-                      <div key={spell.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div key={spell.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <h3 className="text-lg font-semibold">{spell.name}</h3>
+                            <h3 className="font-semibold">{spell.name}</h3>
                             <p className="text-sm text-[var(--muted)]">
                               Level {spell.level} • {spell.actionType} • {spell.range}
                             </p>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={() => castSpell(spell)} className="min-h-11 rounded-2xl bg-[var(--green)] px-4 text-white">
-                              Cast
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => castSpell(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                              {feedback[`spell-${spell.id}`] ?? "Cast"}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                commit("Toggled prepared spell", (draft) => {
-                                  const target = draft.spells.find((item) => item.id === spell.id);
-                                  if (target && !target.alwaysPrepared) target.prepared = !target.prepared;
-                                })
-                              }
-                              className="min-h-11 rounded-2xl border border-[var(--line)] px-4"
-                            >
+                            <button type="button" onClick={() => togglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
                               {spell.prepared ? "Prepared" : "Not prepared"}
                             </button>
                           </div>
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
                           <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
-                          {spell.concentration ? <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-900">Concentration</span> : null}
                           {spell.tags.map((tag) => (
-                            <span key={tag} className="rounded-full bg-white px-3 py-1 text-[var(--muted)] ring-1 ring-[var(--line)]">
+                            <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
                               {tag}
                             </span>
                           ))}
                         </div>
-                        {spell.notes ? <p className="mt-3 text-sm text-[var(--muted)]">Notes: {spell.notes}</p> : null}
                       </div>
                     ))}
                   </div>
                 </ShellCard>
 
-                <ShellCard title="Experimental Elixirs" subtitle="Current vials, potions, and created extras live here as table-ready inventory.">
-                  <div className="flex justify-end">
-                    <button type="button" onClick={createElixir} className="min-h-11 rounded-2xl bg-[var(--orange)] px-4 text-white">
-                      Create Additional Elixir
-                    </button>
-                  </div>
-                  <div className="mt-4 grid gap-3">
+                <ShellCard title="Experimental Elixirs" subtitle="Long-rest and additional elixirs stay distinct in the rest and combat flows, but all active vials stay visible here.">
+                  <div className="grid gap-2">
                     {character.elixirs.map((elixir) => (
-                      <div key={elixir.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <div className="flex items-start justify-between gap-3">
+                      <div key={elixir.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
                             <h3 className="font-semibold">{elixir.name}</h3>
-                            <p className="mt-1 text-sm text-[var(--muted)]">{elixir.effect}</p>
+                            <p className="text-sm text-[var(--muted)]">
+                              {elixir.effect} • Holder: {elixir.holder}
+                            </p>
                           </div>
-                          <button type="button" onClick={() => consumeElixir(elixir.id)} className="min-h-11 rounded-2xl border border-[var(--line)] px-4">
-                            {elixir.consumed ? "Mark Unused" : "Drink / Use"}
+                          <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
+                            {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Drink / Use")}
                           </button>
                         </div>
-                        <p className="mt-3 text-sm text-[var(--muted)]">Holder: {elixir.holder} • Duration: {elixir.duration}</p>
-                        {elixir.notes ? <p className="mt-2 text-sm text-[var(--muted)]">Notes: {elixir.notes}</p> : null}
+                        <p className="mt-2 text-sm text-[var(--muted)]">
+                          {elixir.duration}
+                          {elixir.source ? ` • ${elixir.source}` : ""}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -1019,33 +1359,14 @@ export function FieldKitApp() {
             <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
               <ShellCard title="Veech">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <LabelValue label="Creature Type" value={character.companion.creatureType} />
-                  <LabelValue label="AC" value={character.companion.ac} />
-                  <LabelValue label="Max HP" value={character.companion.maxHp} />
-                  <LabelValue label="Current HP" value={character.companion.currentHp} />
-                  <LabelValue label="Speed" value={character.companion.speed} />
-                  <LabelValue label="Fly Speed" value={character.companion.flySpeed} />
+                  <StatPill label="Creature Type" value={character.companion.creatureType} />
+                  <StatPill label="AC" value={character.companion.ac} />
+                  <StatPill label="Max HP" value={character.companion.maxHp} />
+                  <StatPill label="Current HP" value={character.companion.currentHp} />
+                  <StatPill label="Speed" value={character.companion.speed} />
+                  <StatPill label="Fly Speed" value={character.companion.flySpeed} />
                 </div>
                 <p className="mt-4 rounded-2xl border border-[var(--line)] bg-white/80 p-4 text-sm text-[var(--muted)]">{character.companion.forceStrike}</p>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  <button type="button" onClick={() => updateCompanionHp(-1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                    Veech HP -1
-                  </button>
-                  <button type="button" onClick={() => updateCompanionHp(1, "delta")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                    Veech HP +1
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = window.prompt("Set Veech HP", String(character.companion.currentHp));
-                      if (next === null) return;
-                      updateCompanionHp(numberValue(next), "set");
-                    }}
-                    className="min-h-11 rounded-2xl bg-[var(--green)] px-4 text-white sm:col-span-2"
-                  >
-                    Set Veech HP
-                  </button>
-                </div>
               </ShellCard>
 
               <ShellCard title="Quick Commands">
@@ -1055,13 +1376,16 @@ export function FieldKitApp() {
                       key={command}
                       type="button"
                       onClick={() =>
-                        commit(`Veech used ${command}`, (draft) => {
-                          addLog(draft, `Veech used ${command}.`);
+                        performAction({
+                          actionId: `veech-${command}`,
+                          label: "Logged",
+                          toastMessage: `Veech ${command} logged`,
+                          updater: (draft) => addLog(draft, `Veech used ${command}.`),
                         })
                       }
                       className="min-h-12 rounded-[22px] border border-[var(--line)] bg-white/85 px-4 text-left"
                     >
-                      {command}
+                      {feedback[`veech-${command}`] ?? command}
                     </button>
                   ))}
                 </div>
@@ -1078,43 +1402,22 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "exploration" ? (
             <div className="space-y-4">
-              <ShellCard title="Tool Expertise" subtitle="Brek's proficiency bonus is doubled for any ability check that uses a proficient tool.">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {character.tools.map((tool) => (
-                    <div key={tool.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="font-semibold">{tool.name}</h3>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            commit(`Logged ${tool.name} check`, (draft) => {
-                              addLog(draft, `Attempted a ${tool.name} check (${tool.modifier}).`);
-                            })
-                          }
-                          className="min-h-11 rounded-2xl border border-[var(--line)] px-4"
-                        >
-                          Make a tool check
-                        </button>
-                      </div>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Typical uses: {tool.uses}</p>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Suggested ability: {tool.suggestedAbility}</p>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Modifier: {tool.modifier}</p>
-                    </div>
-                  ))}
-                </div>
-              </ShellCard>
-
-              <ShellCard title="Other Exploration Features">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {["Magical Tinkering", "The Right Tool for the Job", "Ritual casting", "Darkvision", "Fey Ancestry"].map((item) => (
-                    <div key={item} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <h3 className="font-semibold">{item}</h3>
-                    </div>
-                  ))}
-                  <div className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4 lg:col-span-2">
-                    <h3 className="font-semibold">Languages</h3>
-                    <p className="mt-2 text-sm text-[var(--muted)]">{character.stats.languages.join(", ")}</p>
+              <ShellCard title="Tool Expertise" subtitle="Double proficiency stays visible with each tool, but the layout is denser and more sheet-like.">
+                <div className="overflow-hidden rounded-[22px] border border-[var(--line)]">
+                  <div className="hidden grid-cols-[1fr_1.6fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+                    <span>Tool</span>
+                    <span>Typical Uses</span>
+                    <span>Ability</span>
+                    <span>Modifier</span>
                   </div>
+                  {character.tools.map((tool) => (
+                    <div key={tool.id} className="grid gap-2 border-t border-[var(--line)] bg-white/82 px-4 py-3 first:border-t-0 md:grid-cols-[1fr_1.6fr_0.8fr_0.6fr]">
+                      <p className="font-semibold">{tool.name}</p>
+                      <p className="text-sm text-[var(--muted)]">{tool.uses}</p>
+                      <p className="text-sm text-[var(--muted)]">{tool.suggestedAbility}</p>
+                      <p className="text-sm font-semibold">{tool.modifier}</p>
+                    </div>
+                  ))}
                 </div>
               </ShellCard>
             </div>
@@ -1122,52 +1425,31 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "inventory" ? (
             <div className="space-y-4">
-              <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                <ShellCard title="Known Infusions">
-                  <div className="grid gap-3">
-                    {character.infusionsKnown.map((infusion) => (
-                      <div key={infusion.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <h3 className="font-semibold">{infusion.name}</h3>
-                        <p className="mt-2 text-sm text-[var(--muted)]">Eligible item: {infusion.itemType}</p>
-                        <p className="mt-2 text-sm text-[var(--muted)]">Attunement: {infusion.attunement}</p>
-                        <p className="mt-2 text-sm text-[var(--muted)]">{infusion.summary}</p>
-                      </div>
-                    ))}
-                  </div>
-                </ShellCard>
-
-                <ShellCard title="Active Infusions" subtitle={`Maximum infused items: 3 • Currently active: ${activeInfusions.length}`}>
-                  <div className="grid gap-3">
-                    {character.infusionsActive.map((infusion, index) => (
-                      <div key={infusion.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-semibold">{infusion.infusionName}</h3>
-                            <p className="text-sm text-[var(--muted)]">
-                              {infusion.itemName} • Carrier: {infusion.carrier}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => updateActiveInfusion(index, (item) => void (item.active = !item.active))}
-                            className="min-h-11 rounded-2xl border border-[var(--line)] px-4"
-                          >
-                            {infusion.active ? "Active" : "Inactive"}
-                          </button>
+              <ShellCard title="Active Infusions" subtitle={`Active infusions: ${activeInfusions.length} / 3`}>
+                <div className="grid gap-2">
+                  {character.infusionsActive.map((infusion) => (
+                    <div key={infusion.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">{infusion.infusionName}</h3>
+                          <p className="text-sm text-[var(--muted)]">
+                            {infusion.itemName} • Carrier: {infusion.carrier}
+                          </p>
                         </div>
-                        <p className="mt-3 text-sm text-[var(--muted)]">
-                          Charges: {infusion.currentCharges}/{infusion.maxCharges} • Reset: {infusion.resetType}
-                        </p>
+                        <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-sm font-semibold text-[var(--green)]">
+                          {infusion.active ? "Active" : "Inactive"}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </ShellCard>
-              </div>
+                      <p className="mt-2 text-sm text-[var(--muted)]">Charges: {infusion.currentCharges}/{infusion.maxCharges} • Reset: {infusion.resetType}</p>
+                    </div>
+                  ))}
+                </div>
+              </ShellCard>
 
               <ShellCard title="Important Inventory">
                 <div className="grid gap-3 lg:grid-cols-2">
                   {character.inventory.map((category) => (
-                    <div key={category.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
+                    <div key={category.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
                       <h3 className="font-semibold">{category.name}</h3>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {category.items.map((item) => (
@@ -1185,35 +1467,104 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "rest" ? (
             <div className="space-y-4">
-              <ShellCard title="Long Rest Checklist">
-                <div className="grid gap-2">
-                  {character.restChecklist.map((item, index) => (
-                    <label key={item.id} className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--line)] bg-white/75 px-4 py-3">
-                      <input
-                        aria-label={item.label}
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={(event) => updateChecklist(index, (draft) => void (draft.checked = event.target.checked))}
-                      />
-                      <span>{item.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <button type="button" onClick={() => runReset("short-rest")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                    Short Rest
-                  </button>
-                  <button type="button" onClick={() => runReset("dawn")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                    Dawn Reset
-                  </button>
-                  <button type="button" onClick={() => runReset("long-rest")} className="min-h-11 rounded-2xl bg-[var(--green)] text-white">
-                    Long Rest
-                  </button>
-                </div>
-                <div className="mt-4">
-                  <TextArea label="Optional session note" value={sessionNote} onChange={setSessionNote} />
+              <ShellCard title="Long Rest: Automatic Resets" subtitle="These reset automatically when you confirm the long rest.">
+                <div className="rounded-[20px] border border-[var(--line)] bg-white/82 px-4 py-4 text-sm text-[var(--muted)]">
+                  <p className="font-semibold text-[var(--text)]">Automatically restored on long rest</p>
+                  <ul className="mt-3 grid gap-2">
+                    {longRestResources.map((resource) => (
+                      <li key={resource.id}>• {resource.name}: {resource.max}</li>
+                    ))}
+                  </ul>
                 </div>
               </ShellCard>
+
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                <ShellCard title="Long Rest: Brek&apos;s Preparation Tasks">
+                  <div className="grid gap-3">
+                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">Create 2 Experimental Elixirs</h3>
+                          <p className="text-sm text-[var(--muted)]">
+                            Created this rest: {currentRestElixirs.length} / 2 • Empty flasks: {character.longRest.emptyFlasks}
+                          </p>
+                        </div>
+                        <button type="button" onClick={createLongRestElixir} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                          {feedback[`long-rest-elixir-${currentRestElixirs.length}`] ?? "Create Long-Rest Elixir"}
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {currentRestElixirs.length === 0 ? (
+                          <p className="text-sm text-[var(--muted)]">No long-rest elixirs created for this rest yet.</p>
+                        ) : (
+                          currentRestElixirs.map((elixir) => (
+                            <div key={elixir.id} className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="font-semibold">{elixir.name}</p>
+                                <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
+                                  {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Consume")}
+                                </button>
+                              </div>
+                              <p className="mt-1 text-sm text-[var(--muted)]">Holder: {elixir.holder} • {elixir.effect}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">Prepared Spells</h3>
+                          <p className="text-sm text-[var(--muted)]">
+                            Prepared now: {regularPreparedSpells.length} / 6 • Always prepared spells stay separate.
+                          </p>
+                        </div>
+                        <button type="button" onClick={() => changeView("spells")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm">
+                          Review <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">Active Infusions</h3>
+                          <p className="text-sm text-[var(--muted)]">
+                            Active infusions: {activeInfusions.length} / 3 • {activeInfusions.map((item) => item.infusionName).join(", ")}
+                          </p>
+                        </div>
+                        <button type="button" onClick={() => changeView("inventory")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm">
+                          Review <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </ShellCard>
+
+                <ShellCard title="Equipment / Consumables Check">
+                  <div className="grid gap-3">
+                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4 text-sm text-[var(--muted)]">
+                      <p><span className="font-semibold text-[var(--text)]">Empty flasks available:</span> {character.longRest.emptyFlasks}</p>
+                      <p className="mt-2"><span className="font-semibold text-[var(--text)]">Crossbow bolts:</span> {character.inventory.flatMap((item) => item.items).find((item) => item.includes("Crossbow Bolts")) || "Track in inventory"}</p>
+                      <p className="mt-2"><span className="font-semibold text-[var(--text)]">Current elixir / potion inventory:</span> {character.elixirs.length}</p>
+                    </div>
+                    <TextArea
+                      label="Long-rest notes"
+                      value={character.longRest.notes}
+                      onChange={(value) =>
+                        commit("Updated long-rest notes", (draft) => {
+                          draft.longRest.notes = value;
+                        })
+                      }
+                      rows={5}
+                    />
+                    <button type="button" onClick={completeLongRest} className="min-h-12 rounded-2xl bg-[var(--green)] text-white">
+                      Complete Long Rest
+                    </button>
+                  </div>
+                </ShellCard>
+              </div>
 
               <ShellCard title="Session Log">
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -1223,44 +1574,25 @@ export function FieldKitApp() {
                   <div className="flex-1">
                     <TextInput label="Manual log note" value={manualLog} onChange={setManualLog} />
                   </div>
-                  <button type="button" onClick={addManualLog} className="min-h-11 rounded-2xl bg-[var(--orange)] px-4 text-white">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!manualLog.trim()) return;
+                      commit("Added manual log", (draft) => addLog(draft, manualLog.trim()));
+                      showToast("Manual note added.");
+                      setManualLog("");
+                    }}
+                    className="min-h-11 rounded-2xl bg-[var(--orange)] px-4 text-white"
+                  >
                     Add Note
                   </button>
                 </div>
                 <div className="mt-4 grid gap-3">
                   {character.eventLog.map((entry) => (
-                    <div key={entry.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
+                    <div key={entry.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]">
                         <span>{entry.sessionLabel}</span>
-                        <div className="flex items-center gap-2">
-                          <span>{formatTime(entry.timestamp)}</span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              commit("Edited log entry", (draft) => {
-                                const target = draft.eventLog.find((item) => item.id === entry.id);
-                                if (!target) return;
-                                const next = window.prompt("Edit log entry", target.text);
-                                if (next === null || !next.trim()) return;
-                                target.text = next.trim();
-                              })
-                            }
-                            className="rounded-full border border-[var(--line)] px-3 py-1"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              commit("Deleted log entry", (draft) => {
-                                draft.eventLog = draft.eventLog.filter((item) => item.id !== entry.id);
-                              })
-                            }
-                            className="rounded-full border border-[var(--line)] px-3 py-1"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <span>{formatTime(entry.timestamp)}</span>
                       </div>
                       <p className="mt-2 text-sm leading-6 text-[var(--text)]">{entry.text}</p>
                     </div>
@@ -1280,231 +1612,98 @@ export function FieldKitApp() {
                   <TextInput label="Level" type="number" value={character.core.level} onChange={(value) => commit("Updated core data", (draft) => void (draft.core.level = numberValue(value)))} />
                   <TextInput label="Species" value={character.core.species} onChange={(value) => commit("Updated core data", (draft) => void (draft.core.species = value))} />
                   <TextInput label="Background" value={character.core.background} onChange={(value) => commit("Updated core data", (draft) => void (draft.core.background = value))} />
-                  <TextInput label="Alignment" value={character.core.alignment} onChange={(value) => commit("Updated core data", (draft) => void (draft.core.alignment = value))} />
                 </div>
               </ShellCard>
 
-              <ShellCard title="Stats and Abilities">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <TextInput label="AC" type="number" value={character.stats.ac} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.ac = numberValue(value)))} />
-                  <TextInput label="Max HP" type="number" value={character.stats.maxHp} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.maxHp = numberValue(value)))} />
-                  <TextInput label="Current HP" type="number" value={character.stats.currentHp} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.currentHp = numberValue(value)))} />
-                  <TextInput label="Temp HP" type="number" value={character.stats.tempHp} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.tempHp = numberValue(value)))} />
-                  <TextInput label="Speed" value={character.stats.speed} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.speed = value))} />
-                  <TextInput label="Initiative" value={character.stats.initiative} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.initiative = value))} />
-                  <TextInput label="Spell Save DC" type="number" value={character.stats.spellSaveDc} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.spellSaveDc = numberValue(value)))} />
-                  <TextInput label="Spell Attack Bonus" value={character.stats.spellAttackBonus} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.spellAttackBonus = value))} />
-                  <TextInput label="Intelligence Modifier" value={character.stats.intelligenceModifier} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.intelligenceModifier = value))} />
-                  <TextInput label="Proficiency Bonus" value={character.stats.proficiencyBonus} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.proficiencyBonus = value))} />
-                  <TextInput label="Darkvision" value={character.stats.darkvision} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.darkvision = value))} />
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {Object.entries(character.abilities).map(([name, score]) => (
-                    <div key={name} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <p className="font-semibold">{name}</p>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <TextInput
-                          label="Score"
-                          type="number"
-                          value={score.score}
-                          onChange={(value) => commit("Updated ability", (draft) => void (draft.abilities[name].score = numberValue(value)))}
-                        />
-                        <TextInput
-                          label="Modifier"
-                          type="number"
-                          value={score.modifier}
-                          onChange={(value) => commit("Updated ability", (draft) => void (draft.abilities[name].modifier = numberValue(value)))}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ShellCard>
-
-              <ShellCard title="Attacks, Resources, and Spells">
-                <div className="grid gap-4">
-                  {character.attacks.map((attack, index) => (
-                    <div key={attack.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <TextInput label="Attack name" value={attack.name} onChange={(value) => updateAttack(index, (draft) => void (draft.name = value))} />
-                        <TextInput label="Attack bonus" value={attack.attackBonus} onChange={(value) => updateAttack(index, (draft) => void (draft.attackBonus = value))} />
-                        <TextInput label="Damage" value={attack.damage} onChange={(value) => updateAttack(index, (draft) => void (draft.damage = value))} />
-                        <TextInput label="Damage type" value={attack.damageType} onChange={(value) => updateAttack(index, (draft) => void (draft.damageType = value))} />
-                        <TextInput label="Range" value={attack.range} onChange={(value) => updateAttack(index, (draft) => void (draft.range = value))} />
-                        <TextInput
-                          label="Traits"
-                          value={attack.traits.join(", ")}
-                          onChange={(value) => updateAttack(index, (draft) => void (draft.traits = value.split(",").map((item) => item.trim()).filter(Boolean)))}
-                        />
-                      </div>
-                    </div>
-                  ))}
-
-                  {character.resources.map((resource, index) => (
-                    <div key={resource.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                        <TextInput label="Resource name" value={resource.name} onChange={(value) => updateResourceRow(index, (draft) => void (draft.name = value))} />
-                        <TextInput label="Current" type="number" value={resource.current} onChange={(value) => updateResourceRow(index, (draft) => void (draft.current = numberValue(value)))} />
-                        <TextInput label="Max" type="number" value={resource.max} onChange={(value) => updateResourceRow(index, (draft) => void (draft.max = numberValue(value)))} />
-                        <label className="grid gap-2 text-sm text-[var(--muted)]">
-                          <span>Reset type</span>
-                          <select
-                            aria-label="Reset type"
-                            className="min-h-11 rounded-2xl border border-[var(--line)] bg-white px-3"
-                            value={resource.resetType}
-                            onChange={(event) => updateResourceRow(index, (draft) => void (draft.resetType = event.target.value as Resource["resetType"]))}
-                          >
-                            <option value="short-rest">short-rest</option>
-                            <option value="long-rest">long-rest</option>
-                            <option value="dawn">dawn</option>
-                            <option value="manual">manual</option>
-                            <option value="none">none</option>
-                          </select>
-                        </label>
-                        <TextInput label="Notes" value={resource.notes ?? ""} onChange={(value) => updateResourceRow(index, (draft) => void (draft.notes = value))} />
-                      </div>
-                    </div>
-                  ))}
-
-                  {character.spells.map((spell, index) => (
-                    <div key={spell.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <TextInput label="Spell name" value={spell.name} onChange={(value) => updateSpell(index, (draft) => void (draft.name = value))} />
-                        <TextInput label="Level" type="number" value={spell.level} onChange={(value) => updateSpell(index, (draft) => void (draft.level = numberValue(value)))} />
-                        <TextInput label="Range" value={spell.range} onChange={(value) => updateSpell(index, (draft) => void (draft.range = value))} />
-                        <TextInput label="Action type" value={spell.actionType} onChange={(value) => updateSpell(index, (draft) => void (draft.actionType = value as Spell["actionType"]))} />
-                        <TextInput label="Save / attack" value={spell.saveOrAttack} onChange={(value) => updateSpell(index, (draft) => void (draft.saveOrAttack = value))} />
-                        <TextInput label="Tags" value={spell.tags.join(", ")} onChange={(value) => updateSpell(index, (draft) => void (draft.tags = value.split(",").map((item) => item.trim()).filter(Boolean)))} />
-                        <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--muted)]">
-                          <input
-                            aria-label={`Prepared ${spell.name}`}
-                            type="checkbox"
-                            checked={spell.prepared}
-                            onChange={(event) => updateSpell(index, (draft) => void (draft.prepared = event.target.checked))}
-                          />
-                          Prepared
-                        </label>
-                        <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--muted)]">
-                          <input
-                            aria-label={`Concentration ${spell.name}`}
-                            type="checkbox"
-                            checked={spell.concentration}
-                            onChange={(event) => updateSpell(index, (draft) => void (draft.concentration = event.target.checked))}
-                          />
-                          Concentration
-                        </label>
-                      </div>
-                      <div className="mt-3">
-                        <TextArea label="Summary" value={spell.summary} onChange={(value) => updateSpell(index, (draft) => void (draft.summary = value))} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ShellCard>
-
-              <ShellCard title="Reminders, Features, Elixirs, Companion, and Inventory">
-                <div className="grid gap-4">
-                  {character.reminders.map((reminder, index) => (
-                    <div key={reminder.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <TextInput label="Reminder title" value={reminder.title} onChange={(value) => updateReminder(index, (draft) => void (draft.title = value))} />
-                        <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--muted)]">
-                          <input
-                            aria-label={`Pinned ${reminder.title}`}
-                            type="checkbox"
-                            checked={reminder.pinned}
-                            onChange={(event) => updateReminder(index, (draft) => void (draft.pinned = event.target.checked))}
-                          />
-                          Pinned
-                        </label>
-                      </div>
-                      <div className="mt-3">
-                        <TextArea label="Reminder text" value={reminder.summary} onChange={(value) => updateReminder(index, (draft) => void (draft.summary = value))} />
-                      </div>
-                    </div>
-                  ))}
-
-                  {character.features.map((feature, index) => (
-                    <div key={feature.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <TextInput label="Feature name" value={feature.name} onChange={(value) => commit("Updated feature", (draft) => void (draft.features[index].name = value))} />
-                        <TextInput label="Category" value={feature.category} onChange={(value) => commit("Updated feature", (draft) => void (draft.features[index].category = value as Feature["category"]))} />
-                        <TextInput label="Trigger" value={feature.trigger} onChange={(value) => commit("Updated feature", (draft) => void (draft.features[index].trigger = value))} />
-                        <TextInput label="Range" value={feature.range ?? ""} onChange={(value) => commit("Updated feature", (draft) => void (draft.features[index].range = value))} />
-                      </div>
-                      <div className="mt-3">
-                        <TextArea label="Effect" value={feature.effect} onChange={(value) => commit("Updated feature", (draft) => void (draft.features[index].effect = value))} />
-                      </div>
-                    </div>
-                  ))}
-
-                  {character.elixirs.map((elixir, index) => (
-                    <div key={elixir.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <TextInput label="Elixir name" value={elixir.name} onChange={(value) => commit("Updated elixir", (draft) => void (draft.elixirs[index].name = value))} />
-                        <TextInput label="Holder" value={elixir.holder} onChange={(value) => commit("Updated elixir", (draft) => void (draft.elixirs[index].holder = value))} />
-                        <TextInput label="Duration" value={elixir.duration} onChange={(value) => commit("Updated elixir", (draft) => void (draft.elixirs[index].duration = value))} />
-                        <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-3 text-sm text-[var(--muted)]">
-                          <input
-                            aria-label={`Consumed ${elixir.name}`}
-                            type="checkbox"
-                            checked={elixir.consumed}
-                            onChange={(event) => commit("Updated elixir", (draft) => void (draft.elixirs[index].consumed = event.target.checked))}
-                          />
-                          Consumed
-                        </label>
-                      </div>
-                      <div className="mt-3 grid gap-3">
-                        <TextArea label="Effect" value={elixir.effect} onChange={(value) => commit("Updated elixir", (draft) => void (draft.elixirs[index].effect = value))} />
-                        <TextInput label="Notes" value={elixir.notes ?? ""} onChange={(value) => commit("Updated elixir", (draft) => void (draft.elixirs[index].notes = value))} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ShellCard>
-
-              <ShellCard title="Companion, Tools, Inventory, and Notes">
+              <ShellCard title="Stats, Resources, and Notes">
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="space-y-4">
-                    <TextInput label="Companion name" value={character.companion.name} onChange={(value) => commit("Updated companion", (draft) => void (draft.companion.name = value))} />
-                    <TextInput label="Companion AC" type="number" value={character.companion.ac} onChange={(value) => commit("Updated companion", (draft) => void (draft.companion.ac = numberValue(value)))} />
-                    <TextInput label="Companion max HP" type="number" value={character.companion.maxHp} onChange={(value) => commit("Updated companion", (draft) => void (draft.companion.maxHp = numberValue(value)))} />
-                    <TextArea label="Companion notes" value={character.companion.notes.join("\n")} onChange={(value) => commit("Updated companion", (draft) => void (draft.companion.notes = value.split("\n").map((item) => item.trim()).filter(Boolean)))} />
-                    {character.tools.map((tool, index) => (
-                      <div key={tool.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <TextInput label="Tool name" value={tool.name} onChange={(value) => updateTool(index, (draft) => void (draft.name = value))} />
-                        <div className="mt-3 grid gap-3">
-                          <TextInput label="Suggested ability" value={tool.suggestedAbility} onChange={(value) => updateTool(index, (draft) => void (draft.suggestedAbility = value))} />
-                          <TextInput label="Modifier" value={tool.modifier} onChange={(value) => updateTool(index, (draft) => void (draft.modifier = value))} />
-                          <TextArea label="Typical uses" value={tool.uses} onChange={(value) => updateTool(index, (draft) => void (draft.uses = value))} />
+                    <TextInput label="AC" type="number" value={character.stats.ac} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.ac = numberValue(value)))} />
+                    <TextInput label="Max HP" type="number" value={character.stats.maxHp} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.maxHp = numberValue(value)))} />
+                    <TextInput label="Spell Save DC" type="number" value={character.stats.spellSaveDc} onChange={(value) => commit("Updated stats", (draft) => void (draft.stats.spellSaveDc = numberValue(value)))} />
+                    <TextInput label="Empty Flasks" type="number" value={character.longRest.emptyFlasks} onChange={(value) => commit("Updated long-rest prep", (draft) => void (draft.longRest.emptyFlasks = numberValue(value)))} />
+                    {character.resources.map((resource) => (
+                      <div key={resource.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <TextInput label={`${resource.name} current`} type="number" value={resource.current} onChange={(value) => commit("Updated resource", (draft) => {
+                            const target = draft.resources.find((item) => item.id === resource.id);
+                            if (target) target.current = numberValue(value);
+                          })} />
+                          <TextInput label={`${resource.name} max`} type="number" value={resource.max} onChange={(value) => commit("Updated resource", (draft) => {
+                            const target = draft.resources.find((item) => item.id === resource.id);
+                            if (target) target.max = numberValue(value);
+                          })} />
+                          <TextInput label={`${resource.name} reset`} value={resource.resetType} onChange={(value) => commit("Updated resource", (draft) => {
+                            const target = draft.resources.find((item) => item.id === resource.id);
+                            if (target) target.resetType = value as Resource["resetType"];
+                          })} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-4">
+                    <TextArea label="Campaign notes" value={character.notes} onChange={(value) => commit("Updated notes", (draft) => void (draft.notes = value))} rows={6} />
+                    {ABILITY_ORDER.map((ability) => (
+                      <div key={ability} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <p className="font-semibold">{ability}</p>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          <TextInput label="Score" type="number" value={character.abilities[ability].score} onChange={(value) => commit("Updated ability", (draft) => void (draft.abilities[ability].score = numberValue(value)))} />
+                          <TextInput label="Modifier" type="number" value={character.abilities[ability].modifier} onChange={(value) => commit("Updated ability", (draft) => void (draft.abilities[ability].modifier = numberValue(value)))} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </ShellCard>
+
+              <ShellCard title="Spell and Inventory Editing">
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="space-y-4">
+                    {character.spells.map((spell) => (
+                      <div key={spell.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <TextInput label="Spell name" value={spell.name} onChange={(value) => commit("Updated spell", (draft) => {
+                            const target = draft.spells.find((item) => item.id === spell.id);
+                            if (target) target.name = value;
+                          })} />
+                          <TextInput label="Level" type="number" value={spell.level} onChange={(value) => commit("Updated spell", (draft) => {
+                            const target = draft.spells.find((item) => item.id === spell.id);
+                            if (target) target.level = numberValue(value);
+                          })} />
+                          <TextInput label="Range" value={spell.range} onChange={(value) => commit("Updated spell", (draft) => {
+                            const target = draft.spells.find((item) => item.id === spell.id);
+                            if (target) target.range = value;
+                          })} />
+                          <TextInput label="Action Type" value={spell.actionType} onChange={(value) => commit("Updated spell", (draft) => {
+                            const target = draft.spells.find((item) => item.id === spell.id);
+                            if (target) target.actionType = value as Spell["actionType"];
+                          })} />
+                        </div>
+                        <div className="mt-3">
+                          <TextArea label="Summary" value={spell.summary} onChange={(value) => commit("Updated spell", (draft) => {
+                            const target = draft.spells.find((item) => item.id === spell.id);
+                            if (target) target.summary = value;
+                          })} />
                         </div>
                       </div>
                     ))}
                   </div>
 
                   <div className="space-y-4">
-                    {character.inventory.map((category, index) => (
-                      <div key={category.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <TextInput label="Category name" value={category.name} onChange={(value) => updateInventory(index, (draft) => void (draft.name = value))} />
+                    {character.inventory.map((category) => (
+                      <div key={category.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                        <TextInput label="Category" value={category.name} onChange={(value) => commit("Updated inventory", (draft) => {
+                          const target = draft.inventory.find((item) => item.id === category.id);
+                          if (target) target.name = value;
+                        })} />
                         <div className="mt-3">
-                          <TextArea label="Items (one per line)" value={category.items.join("\n")} onChange={(value) => updateInventory(index, (draft) => void (draft.items = value.split("\n").map((item) => item.trim()).filter(Boolean)))} rows={5} />
+                          <TextArea label="Items (one per line)" value={category.items.join("\n")} onChange={(value) => commit("Updated inventory", (draft) => {
+                            const target = draft.inventory.find((item) => item.id === category.id);
+                            if (target) target.items = value.split("\n").map((item) => item.trim()).filter(Boolean);
+                          })} rows={6} />
                         </div>
                       </div>
                     ))}
-
-                    {character.infusionsActive.map((infusion, index) => (
-                      <div key={infusion.id} className="rounded-[24px] border border-[var(--line)] bg-white/80 p-4">
-                        <TextInput label="Infusion name" value={infusion.infusionName} onChange={(value) => updateActiveInfusion(index, (draft) => void (draft.infusionName = value))} />
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          <TextInput label="Item name" value={infusion.itemName} onChange={(value) => updateActiveInfusion(index, (draft) => void (draft.itemName = value))} />
-                          <TextInput label="Carrier" value={infusion.carrier} onChange={(value) => updateActiveInfusion(index, (draft) => void (draft.carrier = value))} />
-                          <TextInput label="Attuned by" value={infusion.attunedBy} onChange={(value) => updateActiveInfusion(index, (draft) => void (draft.attunedBy = value))} />
-                          <TextInput label="Notes" value={infusion.notes ?? ""} onChange={(value) => updateActiveInfusion(index, (draft) => void (draft.notes = value))} />
-                        </div>
-                      </div>
-                    ))}
-
-                    <TextArea label="Campaign notes" value={character.notes} onChange={(value) => commit("Updated notes", (draft) => void (draft.notes = value))} rows={6} />
                   </div>
                 </div>
               </ShellCard>
@@ -1513,13 +1712,27 @@ export function FieldKitApp() {
         </section>
       </div>
 
+      {toast ? (
+        <div className="fixed inset-x-0 bottom-20 z-30 mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-[var(--line)] bg-[rgba(27,34,29,0.96)] px-4 py-3 text-sm text-white shadow-[var(--shadow)]">
+          <div className="flex items-center gap-2">
+            {toast.tone === "success" ? <Check className="h-4 w-4" /> : null}
+            <span>{toast.message}</span>
+          </div>
+          {toast.undoable && undoState ? (
+            <button type="button" onClick={undoLastAction} className="rounded-xl border border-white/20 px-3 py-1 text-sm">
+              Undo
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--line)] bg-[rgba(248,244,236,0.98)] p-2 shadow-[0_-8px_30px_rgba(56,46,28,0.08)] lg:hidden">
         <div className="mx-auto grid max-w-7xl grid-cols-4 gap-2 overflow-x-auto">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
-              onClick={() => commit("Changed view", (draft) => void (draft.ui.activeView = id))}
+              onClick={() => changeView(id)}
               className={cx(
                 "flex min-h-12 flex-col items-center justify-center rounded-2xl px-2 text-[11px]",
                 character.ui.activeView === id ? "bg-[var(--green)] text-white" : "bg-white/80 text-[var(--muted)]",
@@ -1535,28 +1748,17 @@ export function FieldKitApp() {
   );
 }
 
-function FeatureCard({
-  feature,
-  onUse,
-  emphasize = false,
-}: {
-  feature: Feature;
-  onUse: () => void;
-  emphasize?: boolean;
-}) {
+function PromptBlock({ title, prompts, accent = "green" }: { title: string; prompts: string[]; accent?: "green" | "orange" }) {
   return (
-    <div className={cx("rounded-[24px] border p-4", emphasize ? "border-[var(--orange)] bg-orange-50/80" : "border-[var(--line)] bg-white/80")}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{feature.name}</h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">Trigger: {feature.trigger}</p>
-        </div>
-        <button type="button" onClick={onUse} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white px-4">
-          Use
-        </button>
+    <div>
+      <h3 className={cx("font-semibold", accent === "green" ? "text-[var(--green)]" : "text-[var(--orange)]")}>{title}</h3>
+      <div className="mt-3 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+        {prompts.map((prompt) => (
+          <div key={prompt} className="border-t border-[var(--line)] px-4 py-3 text-sm leading-6 text-[var(--muted)] first:border-t-0">
+            {prompt}
+          </div>
+        ))}
       </div>
-      <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{feature.effect}</p>
-      {feature.range ? <p className="mt-2 text-sm text-[var(--muted)]">Range: {feature.range}</p> : null}
     </div>
   );
 }

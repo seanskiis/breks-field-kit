@@ -27,6 +27,11 @@ export type Reminder = {
   pinned: boolean;
 };
 
+export type SavingThrow = {
+  value: number;
+  proficient: boolean;
+};
+
 export type Attack = {
   id: string;
   name: string;
@@ -61,6 +66,9 @@ export type Elixir = {
   consumed: boolean;
   duration: string;
   notes?: string;
+  source?: "inventory" | "long-rest" | "additional";
+  expiresOnLongRest?: boolean;
+  createdDuringRestId?: string;
 };
 
 export type Feature = {
@@ -162,6 +170,7 @@ export type CharacterData = {
     darkvision: string;
     languages: string[];
   };
+  savingThrows: Record<string, SavingThrow>;
   resources: Resource[];
   reminders: Reminder[];
   decisionPrompts: {
@@ -179,6 +188,11 @@ export type CharacterData = {
   inventory: InventoryCategory[];
   companion: Companion;
   restChecklist: ChecklistItem[];
+  longRest: {
+    currentPreparationId: string;
+    emptyFlasks: number;
+    notes: string;
+  };
   eventLog: EventLogEntry[];
   currentSessionLabel: string;
   notes: string;
