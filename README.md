@@ -159,6 +159,33 @@ git push -u origin main
 
 3. Add your Firebase env vars to your hosting or CI environment.
 
+### GitHub Pages
+
+This repository is configured to deploy to GitHub Pages from `main` using the workflow in `.github/workflows/deploy-pages.yml`.
+
+1. In GitHub, open `Settings` -> `Pages`.
+2. Set `Source` to `GitHub Actions`.
+3. Add these repository secrets under `Settings` -> `Secrets and variables` -> `Actions`:
+
+```text
+NEXT_PUBLIC_FIREBASE_API_KEY
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+NEXT_PUBLIC_FIREBASE_PROJECT_ID
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+NEXT_PUBLIC_FIREBASE_APP_ID
+```
+
+4. In your Firebase project, add your GitHub Pages domain to the authorized domains list for Authentication:
+
+```text
+seanskiis.github.io
+```
+
+5. Push to `main` and GitHub Actions will build and publish the static export from `out/`.
+
+The app is configured with the `/breks-field-kit` base path automatically during GitHub Actions builds, which is what Pages needs for this repository URL.
+
 ### Firebase Hosting / Framework Deploy
 
 For a framework-aware Firebase deploy:
