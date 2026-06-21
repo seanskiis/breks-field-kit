@@ -249,23 +249,42 @@ function ShellCard({
   );
 }
 
-function StatPill({ label, value }: { label: string; value: React.ReactNode }) {
+function StatTable({
+  rows,
+}: {
+  rows: Array<{ label: string; value: ReactNode }>;
+}) {
   return (
-    <div className="grid min-h-[112px] place-items-center rounded-[24px] border border-[var(--line)] bg-white/78 p-3 text-center">
-      <div>
-        <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
-        <p className="mt-3 text-4xl font-bold leading-none text-[var(--text)] sm:text-[2.7rem]">{value}</p>
-      </div>
+    <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
+      {rows.map((row) => (
+        <div key={row.label} className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{row.label}</p>
+          <p className="text-right text-2xl font-bold leading-none sm:text-3xl">{row.value}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
-function AbilityBox({ label, modifier, score }: { label: string; modifier: number; score: number }) {
+function AbilityScoreTable({
+  rows,
+}: {
+  rows: Array<{ keyLabel: string; modifier: number; score: number }>;
+}) {
   return (
-    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 px-4 py-3 text-center">
-      <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">{label}</p>
-      <p className="mt-2 text-3xl font-bold leading-none">{formatSigned(modifier)}</p>
-      <p className="mt-2 text-sm font-medium text-[var(--muted)]">{score}</p>
+    <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+      <div className="hidden grid-cols-[0.8fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] sm:grid">
+        <span>Ability</span>
+        <span className="text-right">Mod</span>
+        <span className="text-right">Score</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.keyLabel} className="grid grid-cols-[0.9fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
+          <p className="font-semibold">{row.keyLabel}</p>
+          <p className="text-right text-xl font-bold">{formatSigned(row.modifier)}</p>
+          <p className="text-right text-sm text-[var(--muted)]">{row.score}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1112,30 +1131,29 @@ export function FieldKitApp() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatPill label="AC" value={character.stats.ac} />
-                  <StatPill label="Initiative" value={character.stats.initiative} />
-                  <StatPill label="Spell Save DC" value={character.stats.spellSaveDc} />
-                  <StatPill label="Spell Attack" value={character.stats.spellAttackBonus} />
-                  <StatPill label="Speed" value={character.stats.speed} />
-                  <StatPill label="Intelligence Modifier" value={character.stats.intelligenceModifier} />
-                  <StatPill label="Proficiency Bonus" value={character.stats.proficiencyBonus} />
-                  <StatPill label="Darkvision" value={character.stats.darkvision} />
-                </div>
+                <StatTable
+                  rows={[
+                    { label: "AC", value: character.stats.ac },
+                    { label: "Initiative", value: character.stats.initiative },
+                    { label: "Spell Save DC", value: character.stats.spellSaveDc },
+                    { label: "Spell Attack", value: character.stats.spellAttackBonus },
+                    { label: "Speed", value: character.stats.speed },
+                    { label: "Intelligence Modifier", value: character.stats.intelligenceModifier },
+                    { label: "Proficiency Bonus", value: character.stats.proficiencyBonus },
+                    { label: "Darkvision", value: character.stats.darkvision },
+                  ]}
+                />
 
                 {character.ui.activeView === "dashboard" ? (
                   <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
                     <ShellCard title="Ability Scores" subtitle="High-frequency numbers stay above the fold.">
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {ABILITY_ORDER.map((ability) => (
-                          <AbilityBox
-                            key={ability}
-                            label={ability.slice(0, 3)}
-                            modifier={character.abilities[ability].modifier}
-                            score={character.abilities[ability].score}
-                          />
-                        ))}
-                      </div>
+                      <AbilityScoreTable
+                        rows={ABILITY_ORDER.map((ability) => ({
+                          keyLabel: ability.slice(0, 3).toUpperCase(),
+                          modifier: character.abilities[ability].modifier,
+                          score: character.abilities[ability].score,
+                        }))}
+                      />
                     </ShellCard>
 
                     <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
@@ -1171,7 +1189,12 @@ export function FieldKitApp() {
                   <HeartPulse className="h-5 w-5 text-[var(--red)]" />
                   <h2 className="text-lg font-semibold">Vital Tracker</h2>
                 </div>
-                <StatPill label="Max HP" value={character.stats.maxHp} />
+                <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                  <div className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
+                    <p className="text-right text-2xl font-bold leading-none sm:text-3xl">{character.stats.maxHp}</p>
+                  </div>
+                </div>
                 <EditableNumberField fieldKey={`current-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => saveTypedHp("currentHp", value)} />
                 <EditableNumberField fieldKey={`temp-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => saveTypedHp("tempHp", value)} />
               </div>
@@ -1359,19 +1382,26 @@ export function FieldKitApp() {
           {character.ui.activeView === "veech" ? (
             <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
               <ShellCard title="Veech">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <StatPill label="Creature Type" value={character.companion.creatureType} />
-                  <StatPill label="AC" value={character.companion.ac} />
-                  <StatPill label="Max HP" value={character.companion.maxHp} />
-                  <StatPill label="Current HP" value={character.companion.currentHp} />
-                  <StatPill label="Speed" value={character.companion.speed} />
-                  <StatPill label="Fly Speed" value={character.companion.flySpeed} />
+                <StatTable
+                  rows={[
+                    { label: "Creature Type", value: character.companion.creatureType },
+                    { label: "AC", value: character.companion.ac },
+                    { label: "Max HP", value: character.companion.maxHp },
+                    { label: "Current HP", value: character.companion.currentHp },
+                    { label: "Speed", value: character.companion.speed },
+                    { label: "Fly Speed", value: character.companion.flySpeed },
+                  ]}
+                />
+                <div className="mt-4 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                  <div className="grid grid-cols-[0.9fr_1.8fr] gap-3 px-4 py-3">
+                    <p className="font-semibold">Force Strike</p>
+                    <p className="text-sm text-[var(--muted)]">{character.companion.forceStrike}</p>
+                  </div>
                 </div>
-                <p className="mt-4 rounded-2xl border border-[var(--line)] bg-white/80 p-4 text-sm text-[var(--muted)]">{character.companion.forceStrike}</p>
               </ShellCard>
 
               <ShellCard title="Quick Commands">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
                   {["Dodge", "Force Strike", "Help", "Deliver Touch Spell", "Move / Scout", "Custom Command"].map((command) => (
                     <button
                       key={command}
@@ -1384,15 +1414,15 @@ export function FieldKitApp() {
                           updater: (draft) => addLog(draft, `Veech used ${command}.`),
                         })
                       }
-                      className="min-h-12 rounded-[22px] border border-[var(--line)] bg-white/85 px-4 text-left"
+                      className="grid min-h-12 w-full border-t border-[var(--line)] px-4 py-3 text-left first:border-t-0 hover:bg-[var(--panel-strong)]"
                     >
-                      {feedback[`veech-${command}`] ?? command}
+                      <span className="font-medium">{feedback[`veech-${command}`] ?? command}</span>
                     </button>
                   ))}
                 </div>
-                <div className="mt-4 grid gap-2">
+                <div className="mt-4 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                   {character.companion.notes.map((note) => (
-                    <p key={note} className="rounded-2xl border border-[var(--line)] bg-white/75 px-4 py-3 text-sm text-[var(--muted)]">
+                    <p key={note} className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)] first:border-t-0">
                       {note}
                     </p>
                   ))}
