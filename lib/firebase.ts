@@ -1,5 +1,15 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, signInAnonymously, onAuthStateChanged, type Auth, type User } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  connectAuthEmulator,
+  getAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  type Auth,
+  type User,
+} from "firebase/auth";
 import { connectFirestoreEmulator, doc, getFirestore, onSnapshot, setDoc, type Firestore } from "firebase/firestore";
 import { CharacterData } from "@/lib/types";
 
@@ -15,6 +25,7 @@ const firebaseConfig = {
 const configReady = Object.values(firebaseConfig).every(Boolean);
 
 let emulatorConnected = false;
+const googleProvider = new GoogleAuthProvider();
 
 export type FirebaseServices = {
   app: FirebaseApp;
@@ -40,24 +51,43 @@ export function getFirebaseServices(): FirebaseServices | null {
   return { app, auth, db };
 }
 
-export function listenForAnonymousUser(
+export function listenForGoogleUser(
   services: FirebaseServices,
   onReady: (user: User) => void,
+  onSignedOut: () => void,
   onError: (message: string) => void,
 ) {
-  return onAuthStateChanged(services.auth, async (user) => {
+  return onAuthStateChanged(services.auth, (user) => {
     try {
       if (!user) {
-        const result = await signInAnonymously(services.auth);
-        onReady(result.user);
+        onSignedOut();
         return;
       }
 
       onReady(user);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Anonymous sign-in failed.");
+      onError(error instanceof Error ? error.message : "Google auth state check failed.");
     }
   });
+}
+
+export async function signInWithGoogle(services: FirebaseServices) {
+  try {
+    const result = await signInWithPopup(services.auth, googleProvider);
+    return result.user;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Google sign-in failed.";
+    if (message.toLowerCase().includes("popup")) {
+      await signInWithRedirect(services.auth, googleProvider);
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+export async function signOutUser(services: FirebaseServices) {
+  await signOut(services.auth);
 }
 
 export function subscribeToCharacter(

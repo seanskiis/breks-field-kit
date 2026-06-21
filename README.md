@@ -199,5 +199,5 @@ If you use GitHub Actions or another CI system, make sure the same `NEXT_PUBLIC_
 ## Notes
 
 - The app seeds Brek automatically on the first authenticated Firestore session.
-- Anonymous auth is used now, but the Firebase setup is isolated so Google sign-in can be added later.
+- Google auth is used for the hosted app, and the Firebase setup stays isolated in one module for future auth changes.
 - The event log and resource counters are designed for live play first, rules encyclopedia second.

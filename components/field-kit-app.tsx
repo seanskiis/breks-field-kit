@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Backpack,
-  BookHeart,
   FlaskConical,
+  LogIn,
+  LogOut,
   HeartPulse,
   Hammer,
   LayoutDashboard,
@@ -15,7 +16,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { createSeedCharacter } from "@/lib/seed-data";
-import { getFirebaseServices, isFirebaseConfigured, listenForAnonymousUser, saveCharacter, subscribeToCharacter } from "@/lib/firebase";
+import { getFirebaseServices, isFirebaseConfigured, listenForGoogleUser, saveCharacter, signInWithGoogle, signOutUser, subscribeToCharacter } from "@/lib/firebase";
 import {
   type ActiveInfusion,
   type Attack,
@@ -224,9 +225,10 @@ function TextArea({
 
 export function FieldKitApp() {
   const [character, setCharacter] = useState<CharacterData>(getInitialCharacter);
-  const [firebaseMode, setFirebaseMode] = useState<"loading" | "local-only" | "connected">(isFirebaseConfigured ? "loading" : "local-only");
+  const [firebaseMode, setFirebaseMode] = useState<"loading" | "local-only" | "connected" | "signed-out">(isFirebaseConfigured ? "loading" : "local-only");
   const [syncStatus, setSyncStatus] = useState(getInitialSyncStatus);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userLabel, setUserLabel] = useState<string | null>(null);
   const [manualLog, setManualLog] = useState("");
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [sessionNote, setSessionNote] = useState("");
@@ -253,12 +255,20 @@ export function FieldKitApp() {
       return;
     }
 
-    const unsubscribeAuth = listenForAnonymousUser(
+    const unsubscribeAuth = listenForGoogleUser(
       services,
       (user) => {
         setFirebaseMode("connected");
         setUserId(user.uid);
-        setSyncStatus("Anonymous sign-in ready. Syncing with Firestore...");
+        setUserLabel(user.displayName || user.email || "Signed in");
+        setSyncStatus("Google sign-in ready. Syncing with Firestore...");
+      },
+      () => {
+        setFirebaseMode("signed-out");
+        setUserId(null);
+        setUserLabel(null);
+        hydratedRef.current = true;
+        setSyncStatus("Signed out. Use Google to open your field kit.");
       },
       (message) => {
         setFirebaseMode("local-only");
@@ -545,6 +555,69 @@ export function FieldKitApp() {
 
   const pinnedReminders = character.reminders.filter((item) => item.pinned);
 
+  async function handleGoogleSignIn() {
+    const services = getFirebaseServices();
+    if (!services) {
+      setSyncStatus("Firebase is not configured yet.");
+      return;
+    }
+
+    try {
+      setSyncStatus("Opening Google sign-in...");
+      await signInWithGoogle(services);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? `Google sign-in failed: ${error.message}` : "Google sign-in failed.");
+    }
+  }
+
+  async function handleSignOut() {
+    const services = getFirebaseServices();
+    if (!services) {
+      return;
+    }
+
+    try {
+      await signOutUser(services);
+      setSyncStatus("Signed out.");
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? `Sign-out failed: ${error.message}` : "Sign-out failed.");
+    }
+  }
+
+  if (firebaseMode === "signed-out") {
+    return (
+      <main className="min-h-screen px-3 py-4 sm:px-5 lg:px-6">
+        <div className="mx-auto grid min-h-[80vh] max-w-3xl place-items-center">
+          <ShellCard className="w-full bg-[linear-gradient(135deg,rgba(255,248,236,0.98),rgba(240,247,241,0.98))] p-6 sm:p-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-[var(--green-soft)] text-[var(--green)]">
+                <FlaskConical className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Brek&apos;s Field Kit</p>
+                <h1 className="text-3xl">Sign In</h1>
+              </div>
+            </div>
+            <p className="mt-5 text-base leading-7 text-[var(--muted)]">
+              Sign in with Google to load your Firestore-backed field kit on GitHub Pages. Once you&apos;re in, the app will seed Brek automatically if this is your first session.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="flex min-h-12 items-center gap-3 rounded-2xl bg-[var(--green)] px-5 text-white"
+              >
+                <LogIn className="h-5 w-5" />
+                Sign in with Google
+              </button>
+            </div>
+            <p className="mt-4 text-sm text-[var(--muted)]">{syncStatus}</p>
+          </ShellCard>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen px-3 pb-24 pt-4 text-[var(--text)] sm:px-5 lg:px-6">
       <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -581,8 +654,14 @@ export function FieldKitApp() {
             <ShellCard title="Sync Status">
               <p className="text-sm text-[var(--muted)]">{syncStatus}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[var(--muted)]">
-                {firebaseMode === "connected" ? `Firestore active${userId ? ` • ${userId.slice(0, 8)}` : ""}` : "Local cache only"}
+                {firebaseMode === "connected" ? `Firestore active${userLabel ? ` • ${userLabel}` : userId ? ` • ${userId.slice(0, 8)}` : ""}` : "Local cache only"}
               </p>
+              {firebaseMode === "connected" ? (
+                <button type="button" onClick={handleSignOut} className="mt-4 flex min-h-11 items-center gap-2 rounded-2xl border border-[var(--line)] bg-white px-4 text-sm">
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              ) : null}
               {undoState ? (
                 <button type="button" onClick={undoLastAction} className="mt-4 min-h-11 rounded-2xl bg-[var(--brass)] px-4 text-sm font-semibold text-white">
                   Undo {undoState.label}
