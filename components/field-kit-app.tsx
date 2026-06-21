@@ -355,6 +355,45 @@ function EditableNumberField({
   );
 }
 
+function EditableNumberRow({
+  fieldKey,
+  label,
+  initialValue,
+  denominator,
+  onCommit,
+}: {
+  fieldKey: string;
+  label: string;
+  initialValue: number;
+  denominator?: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(String(initialValue));
+
+  return (
+    <div className="grid grid-cols-[1.1fr_1fr] items-center gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
+      <div className="flex items-center justify-end gap-2">
+        <input
+          key={fieldKey}
+          aria-label={label}
+          inputMode="numeric"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onBlur={() => onCommit(value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
+          className="w-24 rounded-xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-right text-xl font-bold outline-none transition focus:border-[var(--green)]"
+        />
+        {denominator ? <span className="text-sm font-semibold text-[var(--muted)]">/ {denominator}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 type ActionRowData = {
   id: string;
   name: string;
@@ -1190,13 +1229,13 @@ export function FieldKitApp() {
                   <h2 className="text-lg font-semibold">Vital Tracker</h2>
                 </div>
                 <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                  <div className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3 px-4 py-3">
+                  <div className="grid grid-cols-[1.1fr_1fr] items-center gap-3 px-4 py-3">
                     <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
-                    <p className="text-right text-2xl font-bold leading-none sm:text-3xl">{character.stats.maxHp}</p>
+                    <p className="text-right text-xl font-bold leading-none sm:text-2xl">{character.stats.maxHp}</p>
                   </div>
+                  <EditableNumberRow fieldKey={`current-row-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => saveTypedHp("currentHp", value)} />
+                  <EditableNumberRow fieldKey={`temp-row-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => saveTypedHp("tempHp", value)} />
                 </div>
-                <EditableNumberField fieldKey={`current-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => saveTypedHp("currentHp", value)} />
-                <EditableNumberField fieldKey={`temp-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => saveTypedHp("tempHp", value)} />
               </div>
             </div>
           </ShellCard>
