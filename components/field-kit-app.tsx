@@ -118,8 +118,123 @@ function hydrateCharacter(raw: Partial<CharacterData>) {
     eventLog: raw.eventLog ?? seed.eventLog,
   } satisfies CharacterData;
 
+  migrateCharacter(hydrated);
   syncDerivedState(hydrated);
   return hydrated;
+}
+
+function upsertResource(resources: Resource[], next: Resource) {
+  const existing = resources.find((resource) => resource.id === next.id);
+  if (existing) {
+    existing.name = next.name;
+    existing.max = next.max;
+    existing.resetType = next.resetType;
+    existing.notes = next.notes;
+    if (existing.current > existing.max) {
+      existing.current = existing.max;
+    }
+    return;
+  }
+
+  resources.push(next);
+}
+
+function upsertSpell(spells: Spell[], next: Spell) {
+  const existing = spells.find((spell) => spell.id === next.id);
+  if (existing) {
+    existing.name = next.name;
+    existing.level = next.level;
+    existing.prepared = next.prepared;
+    existing.alwaysPrepared = next.alwaysPrepared;
+    existing.actionType = next.actionType;
+    existing.range = next.range;
+    existing.concentration = next.concentration;
+    existing.saveOrAttack = next.saveOrAttack;
+    existing.summary = next.summary;
+    existing.tags = next.tags;
+    existing.notes = next.notes;
+    return;
+  }
+
+  spells.push(next);
+}
+
+function upsertFeature(features: Feature[], next: Feature) {
+  const existing = features.find((feature) => feature.id === next.id);
+  if (existing) {
+    existing.name = next.name;
+    existing.category = next.category;
+    existing.trigger = next.trigger;
+    existing.effect = next.effect;
+    existing.resourceId = next.resourceId;
+    existing.range = next.range;
+    return;
+  }
+
+  features.push(next);
+}
+
+function migrateCharacter(draft: CharacterData) {
+  if (draft.core.level < 8) {
+    draft.core.level = 8;
+  }
+
+  if (draft.abilities.Intelligence) {
+    draft.abilities.Intelligence.score = Math.max(draft.abilities.Intelligence.score, 17);
+    draft.abilities.Intelligence.modifier = 3;
+  }
+
+  upsertResource(draft.resources, {
+    id: "misty-step",
+    name: "Misty Step",
+    current: 2,
+    max: 2,
+    resetType: "long-rest",
+    notes: "Fey Ancestry charges",
+  });
+  upsertResource(draft.resources, {
+    id: "heroism",
+    name: "Heroism",
+    current: 1,
+    max: 1,
+    resetType: "long-rest",
+    notes: "Fey Ancestry charge",
+  });
+
+  upsertSpell(draft.spells, {
+    id: "heroism",
+    name: "Heroism",
+    level: 1,
+    prepared: true,
+    alwaysPrepared: true,
+    actionType: "bonus",
+    range: "Touch",
+    concentration: true,
+    saveOrAttack: "Support",
+    summary: "Bolster a creature with temporary hit points and fear resistance.",
+    tags: ["support", "bonus", "concentration"],
+  });
+  upsertSpell(draft.spells, {
+    id: "misty-step",
+    name: "Misty Step",
+    level: 2,
+    prepared: true,
+    alwaysPrepared: true,
+    actionType: "bonus",
+    range: "Self",
+    concentration: false,
+    saveOrAttack: "Mobility",
+    summary: "Teleport up to 30 feet to reposition or escape.",
+    tags: ["mobility", "escape", "bonus"],
+  });
+
+  upsertFeature(draft.features, {
+    id: "passive-fey",
+    name: "Fey Ancestry",
+    category: "passive",
+    trigger: "Charm effects and fey magic",
+    effect: "Advantage on saves against charm effects, plus 2 charges of Misty Step and 1 charge of Heroism each long rest.",
+  });
 }
 
 function stampLog(text: string, sessionLabel: string): EventLogEntry {
