@@ -6,7 +6,6 @@ import {
   Check,
   ChevronRight,
   FlaskConical,
-  HeartPulse,
   Hammer,
   LayoutDashboard,
   LogIn,
@@ -364,20 +363,50 @@ function ShellCard({
   );
 }
 
+function TableSurface({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cx("overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82", className)}>{children}</div>;
+}
+
+function TableHeaderRow({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cx("hidden bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid", className)}>{children}</div>;
+}
+
+function TableBodyRow({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cx("border-t border-[var(--line)] px-4 py-3 first:border-t-0", className)}>{children}</div>;
+}
+
 function StatTable({
   rows,
 }: {
   rows: Array<{ label: string; value: ReactNode }>;
 }) {
   return (
-    <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
+    <TableSurface>
       {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
+        <TableBodyRow key={row.label} className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3">
           <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{row.label}</p>
-          <p className="text-right text-2xl font-bold leading-none sm:text-3xl">{row.value}</p>
-        </div>
+          <p className="text-right text-[24px] font-bold leading-none">{row.value}</p>
+        </TableBodyRow>
       ))}
-    </div>
+    </TableSurface>
   );
 }
 
@@ -387,20 +416,20 @@ function AbilityScoreTable({
   rows: Array<{ keyLabel: string; modifier: number; score: number }>;
 }) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+    <TableSurface className="rounded-[20px]">
       <div className="hidden grid-cols-[0.8fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] sm:grid">
         <span>Ability</span>
         <span className="text-right">Mod</span>
         <span className="text-right">Score</span>
       </div>
       {rows.map((row) => (
-        <div key={row.keyLabel} className="grid grid-cols-[0.9fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
+        <TableBodyRow key={row.keyLabel} className="grid grid-cols-[0.9fr_0.8fr_0.6fr] gap-3">
           <p className="font-semibold">{row.keyLabel}</p>
           <p className="text-right text-xl font-bold">{formatSigned(row.modifier)}</p>
           <p className="text-right text-sm text-[var(--muted)]">{row.score}</p>
-        </div>
+        </TableBodyRow>
       ))}
-    </div>
+    </TableSurface>
   );
 }
 
@@ -509,6 +538,59 @@ function EditableNumberRow({
   );
 }
 
+function buildPrimaryStatRows(character: CharacterData) {
+  return [
+    { label: "AC", value: character.stats.ac },
+    { label: "Initiative", value: character.stats.initiative },
+    { label: "Spell Save DC", value: character.stats.spellSaveDc },
+    { label: "Spell Attack", value: character.stats.spellAttackBonus },
+    { label: "Speed", value: character.stats.speed },
+    { label: "Intelligence Modifier", value: character.stats.intelligenceModifier },
+    { label: "Proficiency Bonus", value: character.stats.proficiencyBonus },
+    { label: "Darkvision", value: character.stats.darkvision },
+  ];
+}
+
+function VitalTrackerCard({
+  character,
+  onCommitHp,
+}: {
+  character: CharacterData;
+  onCommitHp: (field: "currentHp" | "tempHp", raw: string) => void;
+}) {
+  return (
+    <ShellCard title="Vital Tracker" className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(247,242,233,0.88))]">
+      <TableSurface className="rounded-[20px]">
+        <TableBodyRow className="grid grid-cols-[1.1fr_1fr] items-center gap-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
+          <p className="text-right text-[24px] font-bold leading-none">{character.stats.maxHp}</p>
+        </TableBodyRow>
+        <EditableNumberRow fieldKey={`current-row-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => onCommitHp("currentHp", value)} />
+        <EditableNumberRow fieldKey={`temp-row-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => onCommitHp("tempHp", value)} />
+      </TableSurface>
+    </ShellCard>
+  );
+}
+
+function RightRail({
+  character,
+  onCommitHp,
+  className,
+}: {
+  character: CharacterData;
+  onCommitHp: (field: "currentHp" | "tempHp", raw: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cx("space-y-4", className)}>
+      <VitalTrackerCard character={character} onCommitHp={onCommitHp} />
+      <ShellCard title="Field Snapshot" subtitle="Shared combat stats stay visible while the center column scrolls.">
+        <StatTable rows={buildPrimaryStatRows(character)} />
+      </ShellCard>
+    </div>
+  );
+}
+
 type ActionRowData = {
   id: string;
   name: string;
@@ -535,18 +617,18 @@ function ActionTable({
 }) {
   return (
     <ShellCard title={title} className={className}>
-      <div className="overflow-hidden rounded-[22px] border border-[var(--line)]">
-        <div className="hidden grid-cols-[1.1fr_0.8fr_1.6fr_0.8fr_0.5fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+      <TableSurface className="bg-transparent">
+        <TableHeaderRow className="grid-cols-[1.1fr_0.8fr_1.6fr_0.8fr_0.5fr] gap-3">
           <span>Name</span>
           <span>Type / Trigger</span>
           <span>Summary</span>
           <span>Cost</span>
           <span className="text-right">Use</span>
-        </div>
+        </TableHeaderRow>
         {rows.map((row) => (
-          <div
+          <TableBodyRow
             key={row.id}
-            className="border-t border-[var(--line)] bg-white/82 px-4 py-3 first:border-t-0 transition hover:bg-[var(--panel-strong)] active:bg-[var(--green-soft)]"
+            className="bg-white/82 transition hover:bg-[var(--panel-strong)] active:bg-[var(--green-soft)]"
           >
             <div className="grid gap-2 md:grid-cols-[1.1fr_0.8fr_1.6fr_0.8fr_0.5fr] md:items-center md:gap-3">
               <div>
@@ -577,9 +659,9 @@ function ActionTable({
                 </button>
               </div>
             </div>
-          </div>
+          </TableBodyRow>
         ))}
-      </div>
+      </TableSurface>
     </ShellCard>
   );
 }
@@ -1217,7 +1299,7 @@ export function FieldKitApp() {
 
   return (
     <main className="min-h-screen px-3 pb-24 pt-4 text-[var(--text)] sm:px-5 lg:px-6">
-      <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="mx-auto grid max-w-[1440px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)_280px] lg:items-start">
         <aside className="hidden lg:block">
           <div className="sticky top-4 space-y-4">
             <ShellCard>
@@ -1268,51 +1350,18 @@ export function FieldKitApp() {
           </div>
         </aside>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <ShellCard className="overflow-hidden bg-[linear-gradient(135deg,rgba(255,248,236,0.98),rgba(240,247,241,0.98))]">
-            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr] xl:items-start">
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Field Journal</p>
-                    <h1 className="mt-1 text-4xl leading-none">{character.core.name}</h1>
-                    <p className="mt-2 text-lg text-[var(--muted)]">
-                      Level {character.core.level} {character.core.species} {character.core.subclass} {character.core.className}
-                    </p>
-                  </div>
-                  <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[var(--line)] bg-white/70 text-4xl shadow-sm">
-                    B
-                  </div>
-                </div>
-
-                <StatTable
-                  rows={[
-                    { label: "AC", value: character.stats.ac },
-                    { label: "Initiative", value: character.stats.initiative },
-                    { label: "Spell Save DC", value: character.stats.spellSaveDc },
-                    { label: "Spell Attack", value: character.stats.spellAttackBonus },
-                    { label: "Speed", value: character.stats.speed },
-                    { label: "Intelligence Modifier", value: character.stats.intelligenceModifier },
-                    { label: "Proficiency Bonus", value: character.stats.proficiencyBonus },
-                    { label: "Darkvision", value: character.stats.darkvision },
-                  ]}
-                />
-
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Field Journal</p>
+                <h1 className="mt-1 text-4xl leading-none">{character.core.name}</h1>
+                <p className="mt-2 text-lg text-[var(--muted)]">
+                  Level {character.core.level} {character.core.species} {character.core.subclass} {character.core.className}
+                </p>
               </div>
-
-              <div className="rounded-[28px] border border-[var(--line)] bg-white/70 p-4 xl:min-h-[640px]">
-                <div className="flex items-center gap-2">
-                  <HeartPulse className="h-5 w-5 text-[var(--red)]" />
-                  <h2 className="text-lg font-semibold">Vital Tracker</h2>
-                </div>
-                <div className="mt-32 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82 xl:mt-36">
-                  <div className="grid grid-cols-[1.1fr_1fr] items-center gap-3 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
-                    <p className="text-right text-xl font-bold leading-none sm:text-2xl">{character.stats.maxHp}</p>
-                  </div>
-                  <EditableNumberRow fieldKey={`current-row-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => saveTypedHp("currentHp", value)} />
-                  <EditableNumberRow fieldKey={`temp-row-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => saveTypedHp("tempHp", value)} />
-                </div>
+              <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[var(--line)] bg-white/70 text-4xl shadow-sm">
+                B
               </div>
             </div>
           </ShellCard>
@@ -1331,8 +1380,8 @@ export function FieldKitApp() {
                 </ShellCard>
 
                 <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
-                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                    <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                  <TableSurface className="rounded-[20px]">
+                    <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
                       <span>Save</span>
                       <span className="text-right">Total</span>
                       <span className="text-right">Prof</span>
@@ -1340,16 +1389,16 @@ export function FieldKitApp() {
                     {ABILITY_ORDER.map((ability) => {
                       const save = character.savingThrows[ability];
                       return (
-                        <div key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 text-sm">
+                        <TableBodyRow key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 text-sm">
                           <span>{ability.slice(0, 3).toUpperCase()}</span>
                           <span className="text-right font-semibold">{formatSigned(save.value)}</span>
                           <span className="text-right font-semibold">{save.proficient ? "● P" : "—"}</span>
-                        </div>
+                        </TableBodyRow>
                       );
                     })}
-                  </div>
+                  </TableSurface>
                   <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
-                    <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on saving throws to avoid or end the charmed condition.</p>
+                    <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on charm saves, plus 2 Misty Step charges and 1 Heroism charge each long rest.</p>
                     <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
                     <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
                   </div>
@@ -1357,16 +1406,16 @@ export function FieldKitApp() {
               </div>
 
               <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
-                <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
-                  <div className="hidden grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+                <TableSurface>
+                  <TableHeaderRow className="grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] gap-3">
                     <span>Resource</span>
                     <span className="text-right">Current</span>
                     <span className="text-right">Max</span>
                     <span>Reset</span>
                     <span className="text-right">Actions</span>
-                  </div>
+                  </TableHeaderRow>
                   {character.resources.map((resource) => (
-                    <div key={resource.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] md:items-center md:gap-3">
+                    <TableBodyRow key={resource.id} className="grid gap-2 md:grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] md:items-center md:gap-3">
                       <div>
                         <p className="font-semibold">{resource.name}</p>
                         {resource.notes ? <p className="mt-1 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
@@ -1382,9 +1431,9 @@ export function FieldKitApp() {
                           {feedback[`Restored-${resource.id}`] ?? "Restore"}
                         </button>
                       </div>
-                    </div>
+                    </TableBodyRow>
                   ))}
-                </div>
+                </TableSurface>
               </ShellCard>
 
               <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
@@ -1875,6 +1924,12 @@ export function FieldKitApp() {
             </div>
           ) : null}
         </section>
+
+        <aside className="min-w-0 lg:block">
+          <div className="lg:sticky lg:top-4">
+            <RightRail character={character} onCommitHp={saveTypedHp} />
+          </div>
+        </aside>
       </div>
 
       {toast ? (
