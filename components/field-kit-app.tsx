@@ -34,12 +34,10 @@ const ACTION_FEEDBACK_MS = 1400;
 const TOAST_TIMEOUT_MS = 5000;
 const ABILITY_ORDER = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"] as const;
 const LONG_REST_ELIXIRS = ["Healing", "Swiftness", "Resilience", "Boldness", "Flight", "Transformation"];
-const spellFilters = ["Prepared", "Always Prepared", "Emergency Support", "Control", "Damage", "Mobility", "Utility", "Reaction", "Concentration", "All"];
-
 const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "combat", label: "Combat", icon: Swords },
-  { id: "spells", label: "Spells & Elixirs", icon: WandSparkles },
+  { id: "spells", label: "Spells", icon: WandSparkles },
   { id: "veech", label: "Veech", icon: Sparkles },
   { id: "exploration", label: "Exploration & Tools", icon: Hammer },
   { id: "inventory", label: "Inventory & Infusions", icon: Backpack },
@@ -270,20 +268,6 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function numberValue(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function matchesSpellFilter(spell: Spell, filter: string) {
-  if (filter === "All") return true;
-  if (filter === "Prepared") return spell.prepared;
-  if (filter === "Always Prepared") return Boolean(spell.alwaysPrepared);
-  if (filter === "Reaction") return spell.actionType === "reaction";
-  if (filter === "Concentration") return spell.concentration;
-  if (filter === "Emergency Support") return spell.tags.some((tag) => ["healing", "support"].includes(tag));
-  if (filter === "Control") return spell.tags.includes("control");
-  if (filter === "Damage") return spell.tags.includes("damage");
-  if (filter === "Mobility") return spell.tags.some((tag) => ["mobility", "escape"].includes(tag));
-  if (filter === "Utility") return spell.tags.includes("utility") || spell.tags.includes("ritual");
-  return true;
 }
 
 function syncDerivedState(draft: CharacterData) {
@@ -597,6 +581,62 @@ function RightRail({
   );
 }
 
+function SpellLevelSection({
+  title,
+  spells,
+  slotLabel,
+  feedback,
+  onCast,
+  onTogglePrepared,
+}: {
+  title: string;
+  spells: Spell[];
+  slotLabel?: string;
+  feedback: Record<string, string>;
+  onCast: (spell: Spell) => void;
+  onTogglePrepared: (spellId: string) => void;
+}) {
+  return (
+    <ShellCard title={title} subtitle={slotLabel}>
+      <TableSurface className="rounded-[20px]">
+        {spells.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-[var(--muted)]">No spells in this section.</div>
+        ) : (
+          spells.map((spell) => (
+            <TableBodyRow key={spell.id} className="grid gap-2 md:grid-cols-[0.95fr_1.65fr_0.8fr] md:items-start md:gap-3">
+              <div>
+                <h3 className="font-semibold">{spell.name}</h3>
+                <p className="text-sm text-[var(--muted)]">
+                  {spell.alwaysPrepared ? "Always prepared" : spell.prepared ? "Prepared" : "Available"} • {spell.actionType} • {spell.range}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
+                  {spell.tags.map((tag) => (
+                    <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 md:justify-self-end">
+                <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                  {feedback[`spell-${spell.id}`] ?? "Cast"}
+                </button>
+                <button type="button" onClick={() => onTogglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
+                  {spell.prepared ? "Prepared" : "Not prepared"}
+                </button>
+              </div>
+            </TableBodyRow>
+          ))
+        )}
+      </TableSurface>
+    </ShellCard>
+  );
+}
+
 type ActionRowData = {
   id: string;
   name: string;
@@ -738,16 +778,15 @@ export function FieldKitApp() {
   const toastTimerRef = useRef<number | null>(null);
   const { feedback, pulse } = useTemporaryFeedback();
 
-  const filteredSpells = useMemo(
-    () => character.spells.filter((spell) => matchesSpellFilter(spell, character.ui.spellFilter)),
-    [character.spells, character.ui.spellFilter],
-  );
   const activeInfusions = useMemo(() => character.infusionsActive.filter((item) => item.active), [character.infusionsActive]);
   const pinnedReminders = useMemo(() => character.reminders.filter((item) => item.pinned), [character.reminders]);
   const regularPreparedSpells = useMemo(
     () => character.spells.filter((spell) => spell.prepared && !spell.alwaysPrepared),
     [character.spells],
   );
+  const cantrips = useMemo(() => character.spells.filter((spell) => spell.level === 0), [character.spells]);
+  const firstLevelSpells = useMemo(() => character.spells.filter((spell) => spell.level === 1), [character.spells]);
+  const secondLevelSpells = useMemo(() => character.spells.filter((spell) => spell.level === 2), [character.spells]);
   const currentPreparationId = character.longRest.currentPreparationId;
   const currentRestElixirs = useMemo(
     () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
@@ -757,6 +796,7 @@ export function FieldKitApp() {
     () => character.elixirs.filter((item) => item.expiresOnLongRest && item.createdDuringRestId && item.createdDuringRestId !== currentPreparationId),
     [character.elixirs, currentPreparationId],
   );
+  const additionalElixirs = useMemo(() => character.elixirs.filter((item) => item.source !== "long-rest"), [character.elixirs]);
   const longRestResources = useMemo(() => character.resources.filter((item) => item.resetType === "long-rest"), [character.resources]);
 
   useEffect(() => {
@@ -1502,88 +1542,23 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "spells" ? (
             <div className="space-y-4">
-              <ShellCard title="Spell Filters">
-                <div className="flex flex-wrap gap-2">
-                  {spellFilters.map((filter) => (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() =>
-                        setCharacter((current) => ({
-                          ...current,
-                          ui: {
-                            ...current.ui,
-                            spellFilter: filter,
-                          },
-                        }))
-                      }
-                      className={cx(
-                        "min-h-11 rounded-full px-4 text-sm",
-                        character.ui.spellFilter === filter ? "bg-[var(--green)] text-white" : "border border-[var(--line)] bg-white/80",
-                      )}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-              </ShellCard>
-
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                <ShellCard title="Spells">
-                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                    {filteredSpells.map((spell) => (
-                      <div key={spell.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.95fr_1.65fr_0.8fr] md:items-start md:gap-3">
-                        <div>
-                          <h3 className="font-semibold">{spell.name}</h3>
-                          <p className="text-sm text-[var(--muted)]">
-                            Level {spell.level} • {spell.actionType} • {spell.range}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                            <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
-                            {spell.tags.map((tag) => (
-                              <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex gap-2 md:justify-self-end">
-                          <button type="button" onClick={() => castSpell(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
-                            {feedback[`spell-${spell.id}`] ?? "Cast"}
-                          </button>
-                          <button type="button" onClick={() => togglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
-                            {spell.prepared ? "Prepared" : "Not prepared"}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ShellCard>
-
-                <ShellCard title="Experimental Elixirs" subtitle="Long-rest and additional elixirs stay distinct in the rest and combat flows, but all active vials stay visible here.">
-                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                    {character.elixirs.map((elixir) => (
-                      <div key={elixir.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_1.7fr_0.8fr_0.75fr] md:items-start md:gap-3">
-                        <div>
-                          <h3 className="font-semibold">{elixir.name}</h3>
-                          <p className="text-sm text-[var(--muted)]">{elixir.source ?? "custom"}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-[var(--muted)]">{elixir.effect}</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">Holder: {elixir.holder}</p>
-                        </div>
-                        <p className="text-sm text-[var(--muted)]">{elixir.duration}</p>
-                        <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
-                          {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Drink / Use")}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </ShellCard>
-              </div>
+              <SpellLevelSection title="Cantrips" spells={cantrips} slotLabel="No spell slots required." feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} />
+              <SpellLevelSection
+                title="Level 1 Spells"
+                spells={firstLevelSpells}
+                slotLabel={`Spell slots: ${character.resources.find((item) => item.id === "slot1")?.current ?? 0}/${character.resources.find((item) => item.id === "slot1")?.max ?? 0}`}
+                feedback={feedback}
+                onCast={castSpell}
+                onTogglePrepared={togglePrepared}
+              />
+              <SpellLevelSection
+                title="Level 2 Spells"
+                spells={secondLevelSpells}
+                slotLabel={`Spell slots: ${character.resources.find((item) => item.id === "slot2")?.current ?? 0}/${character.resources.find((item) => item.id === "slot2")?.max ?? 0}`}
+                feedback={feedback}
+                onCast={castSpell}
+                onTogglePrepared={togglePrepared}
+              />
             </div>
           ) : null}
 
@@ -1787,6 +1762,58 @@ export function FieldKitApp() {
                   </div>
                 </ShellCard>
               </div>
+
+              <ShellCard title="Experimental Elixirs" subtitle="All active vials live in Rest alongside long-rest prep and additional elixir tracking.">
+                <div className="space-y-4">
+                  <TableSurface className="rounded-[20px]">
+                    <div className="px-4 py-3 text-sm font-semibold text-[var(--text)]">Long-rest elixirs</div>
+                    {currentRestElixirs.length === 0 ? (
+                      <div className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">No long-rest elixirs created for this rest yet.</div>
+                    ) : (
+                      currentRestElixirs.map((elixir) => (
+                        <TableBodyRow key={elixir.id} className="grid gap-2 md:grid-cols-[0.8fr_1.7fr_0.8fr_0.75fr] md:items-start md:gap-3">
+                          <div>
+                            <h3 className="font-semibold">{elixir.name}</h3>
+                            <p className="text-sm text-[var(--muted)]">Holder: {elixir.holder}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-[var(--muted)]">{elixir.effect}</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">{elixir.duration}</p>
+                          </div>
+                          <p className="text-sm text-[var(--muted)]">{elixir.source ?? "long-rest"}</p>
+                          <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                            {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Consume")}
+                          </button>
+                        </TableBodyRow>
+                      ))
+                    )}
+                  </TableSurface>
+
+                  <TableSurface className="rounded-[20px]">
+                    <div className="px-4 py-3 text-sm font-semibold text-[var(--text)]">Additional and inventory elixirs</div>
+                    {additionalElixirs.length === 0 ? (
+                      <div className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">No additional or carried elixirs available.</div>
+                    ) : (
+                      additionalElixirs.map((elixir) => (
+                        <TableBodyRow key={elixir.id} className="grid gap-2 md:grid-cols-[0.8fr_1.7fr_0.8fr_0.75fr] md:items-start md:gap-3">
+                          <div>
+                            <h3 className="font-semibold">{elixir.name}</h3>
+                            <p className="text-sm text-[var(--muted)]">{elixir.source ?? "custom"}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-[var(--muted)]">{elixir.effect}</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">Holder: {elixir.holder}</p>
+                          </div>
+                          <p className="text-sm text-[var(--muted)]">{elixir.duration}</p>
+                          <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                            {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Drink / Use")}
+                          </button>
+                        </TableBodyRow>
+                      ))
+                    )}
+                  </TableSurface>
+                </div>
+              </ShellCard>
 
               <ShellCard title="Session Log">
                 <div className="flex flex-col gap-3 sm:flex-row">
