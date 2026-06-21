@@ -1181,20 +1181,24 @@ export function FieldKitApp() {
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
               <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
+                  <div className="hidden grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+                    <span>Resource</span>
+                    <span className="text-right">Current</span>
+                    <span className="text-right">Max</span>
+                    <span>Reset</span>
+                    <span className="text-right">Actions</span>
+                  </div>
                   {character.resources.map((resource) => (
-                    <div key={resource.id} className="rounded-[22px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold">{resource.name}</h3>
-                          <p className="text-sm text-[var(--muted)]">{resource.resetType}</p>
-                        </div>
-                        <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-sm font-semibold text-[var(--green)]">
-                          {resource.current}/{resource.max}
-                        </span>
+                    <div key={resource.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] md:items-center md:gap-3">
+                      <div>
+                        <p className="font-semibold">{resource.name}</p>
+                        {resource.notes ? <p className="mt-1 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
                       </div>
-                      {resource.notes ? <p className="mt-2 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
-                      <div className="mt-4 grid grid-cols-2 gap-2">
+                      <p className="text-sm font-semibold md:text-right">{resource.current}</p>
+                      <p className="text-sm text-[var(--muted)] md:text-right">{resource.max}</p>
+                      <p className="text-sm text-[var(--muted)]">{resource.resetType}</p>
+                      <div className="grid grid-cols-2 gap-2 md:justify-self-end">
                         <button type="button" onClick={() => updateResource(resource.id, -1, "Spent")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
                           {feedback[`Spent-${resource.id}`] ?? "Spend"}
                         </button>
@@ -1209,25 +1213,25 @@ export function FieldKitApp() {
 
               <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                 <ShellCard title="Do Not Forget" subtitle="Pinned reminders stay visible, but the layout is denser and easier to scan.">
-                  <div className="grid gap-2">
+                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                     {pinnedReminders.map((reminder) => (
-                      <div key={reminder.id} className="grid gap-2 rounded-[20px] border border-[var(--line)] bg-white/78 px-4 py-3">
-                        <div className="flex items-center justify-between gap-3">
+                      <div key={reminder.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_2fr_0.45fr] md:items-start md:gap-3">
+                        <div>
                           <h3 className="font-semibold">{reminder.title}</h3>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              commit("Toggled reminder pin", (draft) => {
-                                const target = draft.reminders.find((item) => item.id === reminder.id);
-                                if (target) target.pinned = !target.pinned;
-                              })
-                            }
-                            className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm"
-                          >
-                            Unpin
-                          </button>
                         </div>
                         <p className="text-sm leading-6 text-[var(--muted)]">{reminder.summary}</p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            commit("Toggled reminder pin", (draft) => {
+                              const target = draft.reminders.find((item) => item.id === reminder.id);
+                              if (target) target.pinned = !target.pinned;
+                            })
+                          }
+                          className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm md:justify-self-end"
+                        >
+                          Unpin
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1295,33 +1299,33 @@ export function FieldKitApp() {
 
               <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
                 <ShellCard title="Spells">
-                  <div className="grid gap-2">
+                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                     {filteredSpells.map((spell) => (
-                      <div key={spell.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-semibold">{spell.name}</h3>
-                            <p className="text-sm text-[var(--muted)]">
-                              Level {spell.level} • {spell.actionType} • {spell.range}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => castSpell(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
-                              {feedback[`spell-${spell.id}`] ?? "Cast"}
-                            </button>
-                            <button type="button" onClick={() => togglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
-                              {spell.prepared ? "Prepared" : "Not prepared"}
-                            </button>
+                      <div key={spell.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.95fr_1.65fr_0.8fr] md:items-start md:gap-3">
+                        <div>
+                          <h3 className="font-semibold">{spell.name}</h3>
+                          <p className="text-sm text-[var(--muted)]">
+                            Level {spell.level} • {spell.actionType} • {spell.range}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                            <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
+                            {spell.tags.map((tag) => (
+                              <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
+                                {tag}
+                              </span>
+                            ))}
                           </div>
                         </div>
-                        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                          <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
-                          {spell.tags.map((tag) => (
-                            <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
-                              {tag}
-                            </span>
-                          ))}
+                        <div className="flex gap-2 md:justify-self-end">
+                          <button type="button" onClick={() => castSpell(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                            {feedback[`spell-${spell.id}`] ?? "Cast"}
+                          </button>
+                          <button type="button" onClick={() => togglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
+                            {spell.prepared ? "Prepared" : "Not prepared"}
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1329,24 +1333,21 @@ export function FieldKitApp() {
                 </ShellCard>
 
                 <ShellCard title="Experimental Elixirs" subtitle="Long-rest and additional elixirs stay distinct in the rest and combat flows, but all active vials stay visible here.">
-                  <div className="grid gap-2">
+                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                     {character.elixirs.map((elixir) => (
-                      <div key={elixir.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h3 className="font-semibold">{elixir.name}</h3>
-                            <p className="text-sm text-[var(--muted)]">
-                              {elixir.effect} • Holder: {elixir.holder}
-                            </p>
-                          </div>
-                          <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
-                            {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Drink / Use")}
-                          </button>
+                      <div key={elixir.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_1.7fr_0.8fr_0.75fr] md:items-start md:gap-3">
+                        <div>
+                          <h3 className="font-semibold">{elixir.name}</h3>
+                          <p className="text-sm text-[var(--muted)]">{elixir.source ?? "custom"}</p>
                         </div>
-                        <p className="mt-2 text-sm text-[var(--muted)]">
-                          {elixir.duration}
-                          {elixir.source ? ` • ${elixir.source}` : ""}
-                        </p>
+                        <div>
+                          <p className="text-sm text-[var(--muted)]">{elixir.effect}</p>
+                          <p className="mt-1 text-sm text-[var(--muted)]">Holder: {elixir.holder}</p>
+                        </div>
+                        <p className="text-sm text-[var(--muted)]">{elixir.duration}</p>
+                        <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                          {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Drink / Use")}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1426,38 +1427,27 @@ export function FieldKitApp() {
           {character.ui.activeView === "inventory" ? (
             <div className="space-y-4">
               <ShellCard title="Active Infusions" subtitle={`Active infusions: ${activeInfusions.length} / 3`}>
-                <div className="grid gap-2">
+                <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                   {character.infusionsActive.map((infusion) => (
-                    <div key={infusion.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold">{infusion.infusionName}</h3>
-                          <p className="text-sm text-[var(--muted)]">
-                            {infusion.itemName} • Carrier: {infusion.carrier}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-sm font-semibold text-[var(--green)]">
-                          {infusion.active ? "Active" : "Inactive"}
-                        </span>
+                    <div key={infusion.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[1fr_1.2fr_0.85fr_0.7fr] md:items-start md:gap-3">
+                      <div>
+                        <h3 className="font-semibold">{infusion.infusionName}</h3>
+                        <p className="text-sm text-[var(--muted)]">{infusion.itemName}</p>
                       </div>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Charges: {infusion.currentCharges}/{infusion.maxCharges} • Reset: {infusion.resetType}</p>
+                      <p className="text-sm text-[var(--muted)]">Carrier: {infusion.carrier} • Attuned: {infusion.attunedBy}</p>
+                      <p className="text-sm text-[var(--muted)]">Charges: {infusion.currentCharges}/{infusion.maxCharges} • {infusion.resetType}</p>
+                      <p className="text-sm font-semibold md:text-right">{infusion.active ? "Active" : "Inactive"}</p>
                     </div>
                   ))}
                 </div>
               </ShellCard>
 
               <ShellCard title="Important Inventory">
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                   {character.inventory.map((category) => (
-                    <div key={category.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                    <div key={category.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_2.2fr] md:gap-3">
                       <h3 className="font-semibold">{category.name}</h3>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {category.items.map((item) => (
-                          <span key={item} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-sm text-[var(--muted)]">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
+                      <p className="text-sm leading-6 text-[var(--muted)]">{category.items.join(", ") || "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -1480,64 +1470,58 @@ export function FieldKitApp() {
 
               <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                 <ShellCard title="Long Rest: Brek&apos;s Preparation Tasks">
-                  <div className="grid gap-3">
-                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold">Create 2 Experimental Elixirs</h3>
-                          <p className="text-sm text-[var(--muted)]">
-                            Created this rest: {currentRestElixirs.length} / 2 • Empty flasks: {character.longRest.emptyFlasks}
-                          </p>
-                        </div>
-                        <button type="button" onClick={createLongRestElixir} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
-                          {feedback[`long-rest-elixir-${currentRestElixirs.length}`] ?? "Create Long-Rest Elixir"}
-                        </button>
+                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                    <div className="grid gap-2 px-4 py-3 md:grid-cols-[1fr_1.5fr_0.8fr] md:items-start md:gap-3">
+                      <div>
+                        <h3 className="font-semibold">Create 2 Experimental Elixirs</h3>
+                        <p className="text-sm text-[var(--muted)]">
+                          Created this rest: {currentRestElixirs.length} / 2 • Empty flasks: {character.longRest.emptyFlasks}
+                        </p>
                       </div>
-                      <div className="mt-3 grid gap-2">
-                        {currentRestElixirs.length === 0 ? (
-                          <p className="text-sm text-[var(--muted)]">No long-rest elixirs created for this rest yet.</p>
-                        ) : (
-                          currentRestElixirs.map((elixir) => (
-                            <div key={elixir.id} className="rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="font-semibold">{elixir.name}</p>
-                                <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
-                                  {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Consume")}
-                                </button>
-                              </div>
-                              <p className="mt-1 text-sm text-[var(--muted)]">Holder: {elixir.holder} • {elixir.effect}</p>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      <p className="text-sm text-[var(--muted)]">Roll or select a result, choose a holder, and save each vial for the current rest period.</p>
+                      <button type="button" onClick={createLongRestElixir} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white md:justify-self-end">
+                        {feedback[`long-rest-elixir-${currentRestElixirs.length}`] ?? "Create Long-Rest Elixir"}
+                      </button>
                     </div>
-
-                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold">Prepared Spells</h3>
-                          <p className="text-sm text-[var(--muted)]">
-                            Prepared now: {regularPreparedSpells.length} / 6 • Always prepared spells stay separate.
-                          </p>
+                    {currentRestElixirs.length === 0 ? (
+                      <div className="border-t border-[var(--line)] px-4 py-3 text-sm text-[var(--muted)]">No long-rest elixirs created for this rest yet.</div>
+                    ) : (
+                      currentRestElixirs.map((elixir) => (
+                        <div key={elixir.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 md:grid-cols-[0.8fr_1.8fr_0.7fr] md:items-start md:gap-3">
+                          <div>
+                            <p className="font-semibold">{elixir.name}</p>
+                            <p className="text-sm text-[var(--muted)]">Holder: {elixir.holder}</p>
+                          </div>
+                          <p className="text-sm text-[var(--muted)]">{elixir.effect}</p>
+                          <button type="button" onClick={() => toggleConsumeElixir(elixir.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                            {feedback[`elixir-${elixir.id}`] ?? (elixir.consumed ? "Mark Unused" : "Consume")}
+                          </button>
                         </div>
-                        <button type="button" onClick={() => changeView("spells")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm">
-                          Review <ChevronRight className="h-4 w-4" />
-                        </button>
+                      ))
+                    )}
+                    <div className="grid gap-2 border-t border-[var(--line)] px-4 py-3 md:grid-cols-[1fr_1.5fr_0.6fr] md:items-start md:gap-3">
+                      <div>
+                        <h3 className="font-semibold">Prepared Spells</h3>
+                        <p className="text-sm text-[var(--muted)]">
+                          Prepared now: {regularPreparedSpells.length} / 6 • Always prepared spells stay separate.
+                        </p>
                       </div>
+                      <p className="text-sm text-[var(--muted)]">Review prepared spells and long-rest selections from the spell screen.</p>
+                      <button type="button" onClick={() => changeView("spells")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                        Review <ChevronRight className="h-4 w-4" />
+                      </button>
                     </div>
-
-                    <div className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold">Active Infusions</h3>
-                          <p className="text-sm text-[var(--muted)]">
-                            Active infusions: {activeInfusions.length} / 3 • {activeInfusions.map((item) => item.infusionName).join(", ")}
-                          </p>
-                        </div>
-                        <button type="button" onClick={() => changeView("inventory")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm">
-                          Review <ChevronRight className="h-4 w-4" />
-                        </button>
+                    <div className="grid gap-2 border-t border-[var(--line)] px-4 py-3 md:grid-cols-[1fr_1.5fr_0.6fr] md:items-start md:gap-3">
+                      <div>
+                        <h3 className="font-semibold">Active Infusions</h3>
+                        <p className="text-sm text-[var(--muted)]">
+                          Active infusions: {activeInfusions.length} / 3
+                        </p>
                       </div>
+                      <p className="text-sm text-[var(--muted)]">{activeInfusions.map((item) => item.infusionName).join(", ") || "None active"}</p>
+                      <button type="button" onClick={() => changeView("inventory")} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] px-4 text-sm md:justify-self-end">
+                        Review <ChevronRight className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 </ShellCard>
@@ -1587,14 +1571,12 @@ export function FieldKitApp() {
                     Add Note
                   </button>
                 </div>
-                <div className="mt-4 grid gap-3">
+                <div className="mt-4 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                   {character.eventLog.map((entry) => (
-                    <div key={entry.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]">
-                        <span>{entry.sessionLabel}</span>
-                        <span>{formatTime(entry.timestamp)}</span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[var(--text)]">{entry.text}</p>
+                    <div key={entry.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_0.7fr_2fr] md:items-start md:gap-3">
+                      <p className="text-sm font-medium">{entry.sessionLabel}</p>
+                      <p className="text-sm text-[var(--muted)]">{formatTime(entry.timestamp)}</p>
+                      <p className="text-sm leading-6 text-[var(--text)]">{entry.text}</p>
                     </div>
                   ))}
                 </div>
@@ -1759,6 +1741,21 @@ function PromptBlock({ title, prompts, accent = "green" }: { title: string; prom
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DenseList({
+  children,
+  columns,
+}: {
+  children: ReactNode;
+  columns?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
+      {columns ? <div className={cx("hidden gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid", columns)} /> : null}
+      {children}
     </div>
   );
 }
