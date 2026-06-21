@@ -1155,7 +1155,7 @@ export function FieldKitApp() {
 
         <section className="space-y-4">
           <ShellCard className="overflow-hidden bg-[linear-gradient(135deg,rgba(255,248,236,0.98),rgba(240,247,241,0.98))]">
-            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr]">
+            <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr] xl:items-start">
               <div className="space-y-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -1183,52 +1183,14 @@ export function FieldKitApp() {
                   ]}
                 />
 
-                {character.ui.activeView === "dashboard" ? (
-                  <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                    <ShellCard title="Ability Scores" subtitle="High-frequency numbers stay above the fold.">
-                      <AbilityScoreTable
-                        rows={ABILITY_ORDER.map((ability) => ({
-                          keyLabel: ability.slice(0, 3).toUpperCase(),
-                          modifier: character.abilities[ability].modifier,
-                          score: character.abilities[ability].score,
-                        }))}
-                      />
-                    </ShellCard>
-
-                    <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
-                      <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                        <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-                          <span>Save</span>
-                          <span className="text-right">Total</span>
-                          <span className="text-right">Prof</span>
-                        </div>
-                        {ABILITY_ORDER.map((ability) => {
-                          const save = character.savingThrows[ability];
-                          return (
-                            <div key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 text-sm">
-                              <span>{ability.slice(0, 3).toUpperCase()}</span>
-                              <span className="text-right font-semibold">{formatSigned(save.value)}</span>
-                              <span className="text-right font-semibold">{save.proficient ? "● P" : "—"}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
-                        <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on saving throws to avoid or end the charmed condition.</p>
-                        <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
-                        <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
-                      </div>
-                    </ShellCard>
-                  </div>
-                ) : null}
               </div>
 
-              <div className="grid gap-3 rounded-[28px] border border-[var(--line)] bg-white/70 p-4">
+              <div className="rounded-[28px] border border-[var(--line)] bg-white/70 p-4 xl:min-h-[640px]">
                 <div className="flex items-center gap-2">
                   <HeartPulse className="h-5 w-5 text-[var(--red)]" />
                   <h2 className="text-lg font-semibold">Vital Tracker</h2>
                 </div>
-                <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                <div className="mt-32 overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82 xl:mt-36">
                   <div className="grid grid-cols-[1.1fr_1fr] items-center gap-3 px-4 py-3">
                     <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
                     <p className="text-right text-xl font-bold leading-none sm:text-2xl">{character.stats.maxHp}</p>
@@ -1242,6 +1204,43 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                <ShellCard title="Ability Scores" subtitle="High-frequency numbers stay above the fold.">
+                  <AbilityScoreTable
+                    rows={ABILITY_ORDER.map((ability) => ({
+                      keyLabel: ability.slice(0, 3).toUpperCase(),
+                      modifier: character.abilities[ability].modifier,
+                      score: character.abilities[ability].score,
+                    }))}
+                  />
+                </ShellCard>
+
+                <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
+                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
+                    <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                      <span>Save</span>
+                      <span className="text-right">Total</span>
+                      <span className="text-right">Prof</span>
+                    </div>
+                    {ABILITY_ORDER.map((ability) => {
+                      const save = character.savingThrows[ability];
+                      return (
+                        <div key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 border-t border-[var(--line)] px-4 py-3 text-sm">
+                          <span>{ability.slice(0, 3).toUpperCase()}</span>
+                          <span className="text-right font-semibold">{formatSigned(save.value)}</span>
+                          <span className="text-right font-semibold">{save.proficient ? "● P" : "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
+                    <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on saving throws to avoid or end the charmed condition.</p>
+                    <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
+                    <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
+                  </div>
+                </ShellCard>
+              </div>
+
               <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
                 <div className="overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82">
                   <div className="hidden grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
