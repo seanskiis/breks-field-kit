@@ -344,18 +344,20 @@ function ShellCard({
   subtitle,
   children,
   className,
+  compact = false,
 }: {
   title?: string;
   subtitle?: string;
   children: ReactNode;
   className?: string;
+  compact?: boolean;
 }) {
   return (
-    <section className={cx("rounded-[28px] border border-[var(--line)] bg-[var(--panel)] p-4 shadow-[var(--shadow)] sm:p-5", className)}>
+    <section className={cx("rounded-[28px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)]", compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5", className)}>
       {(title || subtitle) && (
-        <header className="mb-4">
-          {title ? <h2 className="text-xl font-semibold text-[var(--text)]">{title}</h2> : null}
-          {subtitle ? <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p> : null}
+        <header className={compact ? "mb-3" : "mb-4"}>
+          {title ? <h2 className={cx("font-semibold text-[var(--text)]", compact ? "text-lg" : "text-xl")}>{title}</h2> : null}
+          {subtitle ? <p className={cx("mt-1 text-[var(--muted)]", compact ? "text-xs leading-5" : "text-sm")}>{subtitle}</p> : null}
         </header>
       )}
       {children}
@@ -395,14 +397,16 @@ function TableBodyRow({
 
 function StatTable({
   rows,
+  compact = false,
 }: {
   rows: Array<{ label: string; value: ReactNode }>;
+  compact?: boolean;
 }) {
   return (
     <TableSurface>
       {rows.map((row) => (
-        <TableBodyRow key={row.label} className="grid grid-cols-[1.2fr_0.9fr] items-center gap-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{row.label}</p>
+        <TableBodyRow key={row.label} className={cx("grid grid-cols-[1.2fr_0.9fr] items-center gap-3", compact ? "px-3 py-2.5" : "")}>
+          <p className={cx("uppercase tracking-[0.22em] text-[var(--muted)]", compact ? "text-[10px]" : "text-[11px]")}>{row.label}</p>
           <p className="text-right text-[24px] font-bold leading-none">{row.value}</p>
         </TableBodyRow>
       ))}
@@ -505,18 +509,20 @@ function EditableNumberRow({
   initialValue,
   denominator,
   onCommit,
+  compact = false,
 }: {
   fieldKey: string;
   label: string;
   initialValue: number;
   denominator?: string;
   onCommit: (value: string) => void;
+  compact?: boolean;
 }) {
   const [value, setValue] = useState(String(initialValue));
 
   return (
-    <div className="grid grid-cols-[1.1fr_1fr] items-center gap-3 border-t border-[var(--line)] px-4 py-3 first:border-t-0">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
+    <div className={cx("grid grid-cols-[1.1fr_1fr] items-center gap-3 border-t border-[var(--line)] first:border-t-0", compact ? "px-3 py-2.5" : "px-4 py-3")}>
+      <p className={cx("uppercase tracking-[0.22em] text-[var(--muted)]", compact ? "text-[10px]" : "text-[11px]")}>{label}</p>
       <div className="flex items-center justify-end gap-2">
         <input
           key={fieldKey}
@@ -530,9 +536,9 @@ function EditableNumberRow({
               event.currentTarget.blur();
             }
           }}
-          className="w-24 rounded-xl border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 text-right text-xl font-bold outline-none transition focus:border-[var(--green)]"
+          className={cx("rounded-xl border border-[var(--line)] bg-[var(--panel-strong)] text-right font-bold outline-none transition focus:border-[var(--green)]", compact ? "w-20 px-2.5 py-1.5 text-lg" : "w-24 px-3 py-2 text-xl")}
         />
-        {denominator ? <span className="text-sm font-semibold text-[var(--muted)]">/ {denominator}</span> : null}
+        {denominator ? <span className={cx("font-semibold text-[var(--muted)]", compact ? "text-xs" : "text-sm")}>/ {denominator}</span> : null}
       </div>
     </div>
   );
@@ -559,14 +565,14 @@ function VitalTrackerCard({
   onCommitHp: (field: "currentHp" | "tempHp", raw: string) => void;
 }) {
   return (
-    <ShellCard title="Vital Tracker" className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(247,242,233,0.88))]">
+    <ShellCard title="Vital Tracker" compact className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(247,242,233,0.88))]">
       <TableSurface className="rounded-[20px]">
-        <TableBodyRow className="grid grid-cols-[1.1fr_1fr] items-center gap-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
+        <TableBodyRow className="grid grid-cols-[1.1fr_1fr] items-center gap-3 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--muted)]">Max HP</p>
           <p className="text-right text-[24px] font-bold leading-none">{character.stats.maxHp}</p>
         </TableBodyRow>
-        <EditableNumberRow fieldKey={`current-row-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => onCommitHp("currentHp", value)} />
-        <EditableNumberRow fieldKey={`temp-row-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => onCommitHp("tempHp", value)} />
+        <EditableNumberRow fieldKey={`current-row-${character.stats.currentHp}`} label="Current HP" initialValue={character.stats.currentHp} denominator={String(character.stats.maxHp)} onCommit={(value) => onCommitHp("currentHp", value)} compact />
+        <EditableNumberRow fieldKey={`temp-row-${character.stats.tempHp}`} label="Temp HP" initialValue={character.stats.tempHp} onCommit={(value) => onCommitHp("tempHp", value)} compact />
       </TableSurface>
     </ShellCard>
   );
@@ -582,10 +588,10 @@ function RightRail({
   className?: string;
 }) {
   return (
-    <div className={cx("space-y-4", className)}>
+    <div className={cx("space-y-3 lg:flex lg:h-[calc(100vh-1rem)] lg:flex-col lg:overflow-hidden", className)}>
       <VitalTrackerCard character={character} onCommitHp={onCommitHp} />
-      <ShellCard title="Field Snapshot" subtitle="Shared combat stats stay visible while the center column scrolls.">
-        <StatTable rows={buildPrimaryStatRows(character)} />
+      <ShellCard title="Field Snapshot" subtitle="Shared combat stats stay visible while the center column scrolls." compact className="lg:min-h-0 lg:flex-1">
+        <StatTable rows={buildPrimaryStatRows(character)} compact />
       </ShellCard>
     </div>
   );
@@ -1300,8 +1306,8 @@ export function FieldKitApp() {
   return (
     <main className="min-h-screen px-3 pb-24 pt-4 text-[var(--text)] sm:px-5 lg:px-6">
       <div className="mx-auto grid max-w-[1440px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)_280px] lg:items-start">
-        <aside className="hidden lg:block">
-          <div className="sticky top-4 space-y-4">
+        <aside className="hidden lg:block lg:self-start lg:sticky lg:top-4">
+          <div className="space-y-4">
             <ShellCard>
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--green-soft)] text-[var(--green)]">
@@ -1925,8 +1931,8 @@ export function FieldKitApp() {
           ) : null}
         </section>
 
-        <aside className="min-w-0 lg:block">
-          <div className="lg:sticky lg:top-4">
+        <aside className="min-w-0 lg:block lg:self-start lg:sticky lg:top-4">
+          <div>
             <RightRail character={character} onCommitHp={saveTypedHp} />
           </div>
         </aside>
