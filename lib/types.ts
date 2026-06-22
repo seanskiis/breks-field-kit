@@ -2,7 +2,7 @@ export type NavView =
   | "dashboard"
   | "combat"
   | "spells"
-  | "veech"
+  // | "veech"
   | "exploration"
   | "inventory"
   | "rest"

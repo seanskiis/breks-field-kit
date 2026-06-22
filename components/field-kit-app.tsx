@@ -14,7 +14,7 @@ import {
   Pencil,
   Plus,
   Shield,
-  Sparkles,
+  // Sparkles,
   Swords,
   Trash2,
   WandSparkles,
@@ -61,7 +61,7 @@ const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ 
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "combat", label: "Combat", icon: Swords },
   { id: "spells", label: "Spells", icon: WandSparkles },
-  { id: "veech", label: "Veech", icon: Sparkles },
+  // { id: "veech", label: "Veech", icon: Sparkles },
   { id: "exploration", label: "Exploration & Tools", icon: Hammer },
   { id: "inventory", label: "Inventory & Infusions", icon: Backpack },
   { id: "rest", label: "Rest & Session", icon: MoonStar },
@@ -306,6 +306,22 @@ function migrateCharacter(draft: CharacterData) {
     trigger: "Charm effects and fey magic",
     effect: "Advantage on saves against charm effects, plus 2 charges of Misty Step and 1 charge of Heroism each long rest.",
   });
+
+  if ((draft.ui.activeView as string) === "veech") {
+    draft.ui.activeView = "dashboard";
+  }
+
+  draft.resources = draft.resources.filter((item) => item.id !== "veech-hp");
+  draft.reminders = draft.reminders.filter((item) => item.id !== "veech-default");
+  draft.features = draft.features.filter((item) => item.id !== "action-veech" && item.id !== "bonus-command");
+  draft.restChecklist = draft.restChecklist.filter((item) => item.id !== "veech-hp-check");
+  draft.decisionPrompts.beforeActing = draft.decisionPrompts.beforeActing.filter((item) => !item.includes("Veech"));
+  draft.decisionPrompts.whenRollHappens = draft.decisionPrompts.whenRollHappens.filter((item) => !item.includes("Veech"));
+
+  const cureWounds = draft.spells.find((item) => item.id === "cure-wounds");
+  if (cureWounds?.summary.includes("Veech")) {
+    cureWounds.summary = "Strong single-target healing at touch range.";
+  }
 }
 
 function stampLog(text: string, sessionLabel: string): EventLogEntry {
@@ -350,10 +366,10 @@ function syncDerivedState(draft: CharacterData) {
     elixirResource.current = draft.elixirs.filter((item) => !item.consumed).length;
   }
 
-  const veechResource = draft.resources.find((item) => item.id === "veech-hp");
-  if (veechResource) {
-    veechResource.current = draft.companion.currentHp;
-  }
+  // const veechResource = draft.resources.find((item) => item.id === "veech-hp");
+  // if (veechResource) {
+  //   veechResource.current = draft.companion.currentHp;
+  // }
 }
 
 function buildElixirFromSelection(options: {
@@ -2045,7 +2061,7 @@ export function FieldKitApp() {
             </div>
           ) : null}
 
-          {character.ui.activeView === "veech" ? (
+          {/* {character.ui.activeView === "veech" ? (
             <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
               <ShellCard title="Veech">
                 <StatTable
@@ -2095,7 +2111,7 @@ export function FieldKitApp() {
                 </div>
               </ShellCard>
             </div>
-          ) : null}
+          ) : null} */}
 
           {character.ui.activeView === "exploration" ? (
             <div className="space-y-4">
