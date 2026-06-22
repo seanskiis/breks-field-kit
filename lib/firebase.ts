@@ -10,8 +10,23 @@ import {
   type Auth,
   type User,
 } from "firebase/auth";
-import { connectFirestoreEmulator, doc, getFirestore, onSnapshot, setDoc, type Firestore } from "firebase/firestore";
-import { CharacterData } from "@/lib/types";
+import {
+  collection,
+  connectFirestoreEmulator,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  onSnapshot,
+  serverTimestamp,
+  writeBatch,
+  type CollectionReference,
+  type DocumentData,
+  type DocumentReference,
+  type Firestore,
+} from "firebase/firestore";
+import { createSeedCharacter } from "@/lib/seed-data";
+import { type CharacterData } from "@/lib/types";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,6 +38,43 @@ const firebaseConfig = {
 };
 
 const configReady = Object.values(firebaseConfig).every(Boolean);
+const CHARACTER_ID = "brek-field-kit";
+const SCHEMA_VERSION = 2;
+
+const LIST_COLLECTION_KEYS = [
+  "resources",
+  "reminders",
+  "attacks",
+  "spells",
+  "elixirs",
+  "features",
+  "tools",
+  "infusionsKnown",
+  "infusionsActive",
+  "inventory",
+  "restChecklist",
+  "eventLog",
+] as const;
+
+const STATE_DOC_KEYS = ["abilities", "stats", "savingThrows", "decisionPrompts", "companion", "longRest", "ui"] as const;
+
+type ListCollectionKey = (typeof LIST_COLLECTION_KEYS)[number];
+type StateDocKey = (typeof STATE_DOC_KEYS)[number];
+
+type CharacterRootDoc = Pick<CharacterData, "id" | "core" | "currentSessionLabel" | "notes"> & {
+  schemaVersion: number;
+  updatedAt: unknown;
+};
+
+type StructuredCharacterDocs = {
+  root: CharacterRootDoc;
+  state: Pick<CharacterData, StateDocKey>;
+  lists: Pick<CharacterData, ListCollectionKey>;
+};
+
+type IndexedFirestoreDoc<T> = T & {
+  _sortOrder?: number;
+};
 
 let emulatorConnected = false;
 const googleProvider = new GoogleAuthProvider();
@@ -49,6 +101,134 @@ export function getFirebaseServices(): FirebaseServices | null {
   }
 
   return { app, auth, db };
+}
+
+function characterRootRef(services: FirebaseServices, userId: string, characterId = CHARACTER_ID) {
+  return doc(services.db, "users", userId, "characters", characterId);
+}
+
+function stateDocRef(rootRef: DocumentReference<DocumentData>, key: StateDocKey) {
+  return doc(rootRef, "state", key);
+}
+
+function listCollectionRef(rootRef: DocumentReference<DocumentData>, key: ListCollectionKey) {
+  return collection(rootRef, key) as CollectionReference<DocumentData>;
+}
+
+function isLegacyCharacterPayload(data: DocumentData | undefined): data is CharacterData {
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+
+  return "core" in data && "stats" in data && "spells" in data && !("schemaVersion" in data);
+}
+
+function stripSortOrder<T>(data: IndexedFirestoreDoc<T>): T {
+  const { _sortOrder: _ignored, ...rest } = data as IndexedFirestoreDoc<T> & Record<string, unknown>;
+  return rest as T;
+}
+
+async function loadIndexedCollection<T>(rootRef: DocumentReference<DocumentData>, key: ListCollectionKey): Promise<T[]> {
+  const snapshot = await getDocs(listCollectionRef(rootRef, key));
+  return snapshot.docs
+    .map((item) => item.data() as IndexedFirestoreDoc<T>)
+    .sort((left, right) => (left._sortOrder ?? 0) - (right._sortOrder ?? 0))
+    .map((item) => stripSortOrder(item));
+}
+
+async function loadStructuredCharacter(
+  services: FirebaseServices,
+  userId: string,
+  characterId: string,
+): Promise<CharacterData> {
+  const seed = createSeedCharacter();
+  const rootRef = characterRootRef(services, userId, characterId);
+
+  const [rootSnapshot, ...stateSnapshots] = await Promise.all([
+    getDoc(rootRef),
+    ...STATE_DOC_KEYS.map((key) => getDoc(stateDocRef(rootRef, key))),
+  ]);
+
+  const rootData = (rootSnapshot.data() as Partial<CharacterRootDoc> | undefined) ?? {};
+
+  const state = STATE_DOC_KEYS.reduce((accumulator, key, index) => {
+    accumulator[key] = (stateSnapshots[index].data() as CharacterData[typeof key] | undefined) ?? seed[key];
+    return accumulator;
+  }, {} as Pick<CharacterData, StateDocKey>);
+
+  const listEntries = await Promise.all(
+    LIST_COLLECTION_KEYS.map(async (key) => [key, await loadIndexedCollection<CharacterData[typeof key][number]>(rootRef, key)] as const),
+  );
+
+  const lists = Object.fromEntries(listEntries) as Pick<CharacterData, ListCollectionKey>;
+
+  return {
+    ...seed,
+    id: rootData.id ?? characterId,
+    core: rootData.core ?? seed.core,
+    currentSessionLabel: rootData.currentSessionLabel ?? seed.currentSessionLabel,
+    notes: rootData.notes ?? seed.notes,
+    ...state,
+    ...lists,
+  };
+}
+
+function splitCharacterForStorage(data: CharacterData): StructuredCharacterDocs {
+  return {
+    root: {
+      id: data.id,
+      core: data.core,
+      currentSessionLabel: data.currentSessionLabel,
+      notes: data.notes,
+      schemaVersion: SCHEMA_VERSION,
+      updatedAt: serverTimestamp(),
+    },
+    state: {
+      abilities: data.abilities,
+      stats: data.stats,
+      savingThrows: data.savingThrows,
+      decisionPrompts: data.decisionPrompts,
+      companion: data.companion,
+      longRest: data.longRest,
+      ui: data.ui,
+    },
+    lists: {
+      resources: data.resources,
+      reminders: data.reminders,
+      attacks: data.attacks,
+      spells: data.spells,
+      elixirs: data.elixirs,
+      features: data.features,
+      tools: data.tools,
+      infusionsKnown: data.infusionsKnown,
+      infusionsActive: data.infusionsActive,
+      inventory: data.inventory,
+      restChecklist: data.restChecklist,
+      eventLog: data.eventLog,
+    },
+  };
+}
+
+async function syncIndexedCollection(
+  rootRef: DocumentReference<DocumentData>,
+  key: ListCollectionKey,
+  items: Array<{ id: string }>,
+) {
+  const existingSnapshot = await getDocs(listCollectionRef(rootRef, key));
+  const existingIds = new Set(existingSnapshot.docs.map((item) => item.id));
+  const batch = writeBatch(rootRef.firestore);
+
+  items.forEach((item, index) => {
+    const ref = doc(rootRef, key, item.id);
+    batch.set(ref, { ...item, _sortOrder: index });
+    existingIds.delete(item.id);
+  });
+
+  existingIds.forEach((staleId) => {
+    batch.delete(doc(rootRef, key, staleId));
+  });
+
+  await batch.commit();
 }
 
 export function listenForGoogleUser(
@@ -96,7 +276,7 @@ export function subscribeToCharacter(
   onData: (data: CharacterData) => void,
   onMissing: () => Promise<void>,
 ) {
-  const ref = doc(services.db, "users", userId, "characters", "brek-field-kit");
+  const ref = characterRootRef(services, userId, CHARACTER_ID);
 
   return onSnapshot(ref, async (snapshot) => {
     if (!snapshot.exists()) {
@@ -104,13 +284,31 @@ export function subscribeToCharacter(
       return;
     }
 
-    onData(snapshot.data() as CharacterData);
+    const raw = snapshot.data();
+    if (isLegacyCharacterPayload(raw)) {
+      await saveCharacter(services, userId, raw);
+      onData(raw);
+      return;
+    }
+
+    onData(await loadStructuredCharacter(services, userId, CHARACTER_ID));
   });
 }
 
 export async function saveCharacter(services: FirebaseServices, userId: string, data: CharacterData) {
-  const ref = doc(services.db, "users", userId, "characters", data.id);
-  await setDoc(ref, data, { merge: true });
+  const rootRef = characterRootRef(services, userId, data.id);
+  const split = splitCharacterForStorage(data);
+  const batch = writeBatch(services.db);
+
+  batch.set(rootRef, split.root);
+
+  STATE_DOC_KEYS.forEach((key) => {
+    batch.set(stateDocRef(rootRef, key), split.state[key]);
+  });
+
+  await batch.commit();
+
+  await Promise.all(LIST_COLLECTION_KEYS.map((key) => syncIndexedCollection(rootRef, key, split.lists[key])));
 }
 
 export { configReady as isFirebaseConfigured };
