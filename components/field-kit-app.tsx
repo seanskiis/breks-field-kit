@@ -490,7 +490,7 @@ function ProficiencyBubble({
     <span
       aria-hidden="true"
       className={cx(
-        "inline-flex h-4 w-4 items-center justify-center rounded-full border border-[var(--line)]",
+        "kit-bubble inline-flex h-4 w-4 items-center justify-center border border-[var(--line)]",
         filled ? "bg-[var(--brass)] shadow-[0_0_0_1px_rgba(240,176,67,0.18)]" : "bg-transparent",
       )}
     />
@@ -511,19 +511,19 @@ function AbilitySaveTable({
 }) {
   return (
     <TableSurface>
-      <div className="hidden grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.35fr_1.05fr] gap-4 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+      <div className="hidden grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.2fr_1.2fr] gap-4 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
         <span className="text-center">Prof</span>
         <span>Ability</span>
         <span className="text-right">Mod</span>
         <span className="text-right">Score</span>
         <span className="justify-self-center">|</span>
-        <span className="text-center">Prof</span>
+        <span className="text-right">Prof</span>
         <span className="text-right">Save Mod</span>
       </div>
       {rows.map((row) => (
         <TableBodyRow
           key={row.keyLabel}
-          className="grid grid-cols-[auto_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.35fr_1.05fr] md:gap-x-4 md:items-center"
+          className="grid grid-cols-[auto_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.2fr_1.2fr] md:gap-x-4 md:items-center"
         >
           <span className="flex items-center justify-center">
             <ProficiencyBubble filled={row.abilityProficient} />
@@ -532,7 +532,7 @@ function AbilitySaveTable({
           <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.modifier)}</p>
           <p className="col-start-2 text-sm text-[var(--muted)] md:col-auto md:text-right md:text-base">{row.score}</p>
           <span className="hidden h-full w-px justify-self-center bg-[color:rgba(216,154,54,0.65)] md:block" />
-          <span className="flex items-center justify-center">
+          <span className="flex items-center justify-end">
             <ProficiencyBubble filled={row.saveProficient} />
           </span>
           <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.saveModifier)}</p>
