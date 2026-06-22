@@ -430,7 +430,16 @@ function TableBodyRow({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cx("border-t border-[var(--line)] px-4 py-3 first:border-t-0", className)}>{children}</div>;
+  return (
+    <div
+      className={cx(
+        "relative px-4 py-3 before:absolute before:left-4 before:right-4 before:top-0 before:border-t before:border-[color:rgba(216,154,54,0.65)] first:before:hidden",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 function StatTable({
@@ -452,23 +461,33 @@ function StatTable({
   );
 }
 
-function AbilityScoreTable({
+function AbilitySaveTable({
   rows,
 }: {
-  rows: Array<{ keyLabel: string; modifier: number; score: number }>;
+  rows: Array<{
+    keyLabel: string;
+    modifier: number;
+    score: number;
+    saveModifier: number;
+    proficient: boolean;
+  }>;
 }) {
   return (
-    <TableSurface className="rounded-[20px]">
-      <div className="hidden grid-cols-[0.8fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] sm:grid">
+    <TableSurface>
+      <div className="hidden grid-cols-[0.95fr_0.7fr_0.7fr_0.85fr_0.55fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
         <span>Ability</span>
         <span className="text-right">Mod</span>
         <span className="text-right">Score</span>
+        <span className="text-right">Save Mod</span>
+        <span className="text-right">Prof</span>
       </div>
       {rows.map((row) => (
-        <TableBodyRow key={row.keyLabel} className="grid grid-cols-[0.9fr_0.8fr_0.6fr] gap-3">
-          <p className="font-semibold">{row.keyLabel}</p>
-          <p className="text-right text-xl font-bold">{formatSigned(row.modifier)}</p>
-          <p className="text-right text-sm text-[var(--muted)]">{row.score}</p>
+        <TableBodyRow key={row.keyLabel} className="grid grid-cols-[1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.95fr_0.7fr_0.7fr_0.85fr_0.55fr] md:items-center">
+          <p className="font-semibold uppercase tracking-[0.12em] md:tracking-[0.16em]">{row.keyLabel}</p>
+          <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.modifier)}</p>
+          <p className="text-right text-sm text-[var(--muted)] md:text-base">{row.score}</p>
+          <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.saveModifier)}</p>
+          <p className="text-right font-semibold text-[var(--muted)]">{row.proficient ? "Yes" : "—"}</p>
         </TableBodyRow>
       ))}
     </TableSurface>
@@ -1738,35 +1757,17 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
-              <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                <ShellCard title="Ability Scores" subtitle="High-frequency numbers stay above the fold.">
-                  <AbilityScoreTable
+              <div className="space-y-4">
+                <ShellCard title="Ability Scores & Saves" subtitle="Core numbers and saving throw proficiency are paired in one reference table.">
+                  <AbilitySaveTable
                     rows={ABILITY_ORDER.map((ability) => ({
                       keyLabel: ability.slice(0, 3).toUpperCase(),
                       modifier: character.abilities[ability].modifier,
                       score: character.abilities[ability].score,
+                      saveModifier: character.savingThrows[ability].value,
+                      proficient: character.savingThrows[ability].proficient,
                     }))}
                   />
-                </ShellCard>
-
-                <ShellCard title="Saving Throws" subtitle="Proficient saves are marked with a visible indicator.">
-                  <TableSurface className="rounded-[20px]">
-                    <div className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-                      <span>Save</span>
-                      <span className="text-right">Total</span>
-                      <span className="text-right">Prof</span>
-                    </div>
-                    {ABILITY_ORDER.map((ability) => {
-                      const save = character.savingThrows[ability];
-                      return (
-                        <TableBodyRow key={ability} className="grid grid-cols-[1fr_0.8fr_0.6fr] gap-3 text-sm">
-                          <span>{ability.slice(0, 3).toUpperCase()}</span>
-                          <span className="text-right font-semibold">{formatSigned(save.value)}</span>
-                          <span className="text-right font-semibold">{save.proficient ? "● P" : "—"}</span>
-                        </TableBodyRow>
-                      );
-                    })}
-                  </TableSurface>
                   <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
                     <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on charm saves, plus 2 Misty Step charges and 1 Heroism charge each long rest.</p>
                     <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
