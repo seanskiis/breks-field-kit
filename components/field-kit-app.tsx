@@ -20,7 +20,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { createSeedCharacter } from "@/lib/seed-data";
-import { getFirebaseServices, isFirebaseConfigured, listenForGoogleUser, saveCharacter, signInWithGoogle, signOutUser, subscribeToCharacter } from "@/lib/firebase";
+import { getFirebaseServices, isFirebaseConfigured, listenForGoogleUser, saveCharacter, saveCharacterChanges, signInWithGoogle, signOutUser, subscribeToCharacter } from "@/lib/firebase";
 import {
   type Attack,
   type CharacterData,
@@ -1188,6 +1188,7 @@ export function FieldKitApp() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionNote, setSessionNote] = useState("");
   const lastSavedRef = useRef("");
+  const lastSavedCharacterRef = useRef<CharacterData | null>(null);
   const hydratedRef = useRef(false);
   const writeTimerRef = useRef<number | null>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -1269,11 +1270,13 @@ export function FieldKitApp() {
         setFirebaseMode("signed-out");
         setUserId(null);
         setUserLabel(null);
+        lastSavedCharacterRef.current = null;
         hydratedRef.current = true;
         setSyncStatus("Signed out. Use Google to open your field kit.");
       },
       (message) => {
         setFirebaseMode("local-only");
+        lastSavedCharacterRef.current = null;
         hydratedRef.current = true;
         setSyncStatus(`Firebase auth failed: ${message}`);
       },
@@ -1296,6 +1299,7 @@ export function FieldKitApp() {
         const hydrated = hydrateCharacter(data);
         const serialized = JSON.stringify(hydrated);
         lastSavedRef.current = serialized;
+        lastSavedCharacterRef.current = cloneCharacter(hydrated);
         setCharacter(hydrated);
         setSyncStatus("Firestore synced.");
       },
@@ -1326,8 +1330,13 @@ export function FieldKitApp() {
 
     writeTimerRef.current = window.setTimeout(async () => {
       try {
-        await saveCharacter(services, userId, character);
+        if (!lastSavedCharacterRef.current) {
+          await saveCharacter(services, userId, character);
+        } else {
+          await saveCharacterChanges(services, userId, lastSavedCharacterRef.current, character);
+        }
         lastSavedRef.current = serialized;
+        lastSavedCharacterRef.current = cloneCharacter(character);
         setSyncStatus("Changes saved to Firestore.");
       } catch (error) {
         setSyncStatus(error instanceof Error ? `Save failed, local cache kept: ${error.message}` : "Save failed, local cache kept.");

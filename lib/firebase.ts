@@ -24,6 +24,7 @@ import {
   type DocumentData,
   type DocumentReference,
   type Firestore,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { createSeedCharacter } from "@/lib/seed-data";
 import { type CharacterData } from "@/lib/types";
@@ -126,6 +127,14 @@ function isLegacyCharacterPayload(data: DocumentData | undefined): data is Chara
 function stripSortOrder<T>(data: IndexedFirestoreDoc<T>): T {
   const { _sortOrder: _ignored, ...rest } = data as IndexedFirestoreDoc<T> & Record<string, unknown>;
   return rest as T;
+}
+
+function cloneCharacter(data: CharacterData) {
+  return JSON.parse(JSON.stringify(data)) as CharacterData;
+}
+
+function areEqual(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 async function loadIndexedCollection<T>(rootRef: DocumentReference<DocumentData>, key: ListCollectionKey): Promise<T[]> {
@@ -231,6 +240,13 @@ async function syncIndexedCollection(
   await batch.commit();
 }
 
+function applyRootToCharacter(target: CharacterData, rootData: Partial<CharacterRootDoc>) {
+  target.id = rootData.id ?? target.id;
+  target.core = rootData.core ?? target.core;
+  target.currentSessionLabel = rootData.currentSessionLabel ?? target.currentSessionLabel;
+  target.notes = rootData.notes ?? target.notes;
+}
+
 export function listenForGoogleUser(
   services: FirebaseServices,
   onReady: (user: User) => void,
@@ -277,12 +293,65 @@ export function subscribeToCharacter(
   onMissing: () => Promise<void>,
 ) {
   const ref = characterRootRef(services, userId, CHARACTER_ID);
+  const working = cloneCharacter(createSeedCharacter());
+  const unsubs: Unsubscribe[] = [];
+  let childListenersReady = false;
+  let missingHandled = false;
+  let lastPayload = "";
 
-  return onSnapshot(ref, async (snapshot) => {
-    if (!snapshot.exists()) {
-      await onMissing();
+  function emit() {
+    const next = JSON.stringify(working);
+    if (next === lastPayload) {
       return;
     }
+
+    lastPayload = next;
+    onData(cloneCharacter(working));
+  }
+
+  function attachStructuredListeners(rootRef: DocumentReference<DocumentData>) {
+    if (childListenersReady) {
+      return;
+    }
+
+    childListenersReady = true;
+
+    STATE_DOC_KEYS.forEach((key) => {
+      unsubs.push(
+        onSnapshot(stateDocRef(rootRef, key), (snapshot) => {
+          if (!snapshot.exists()) {
+            return;
+          }
+
+          working[key] = snapshot.data() as CharacterData[typeof key];
+          emit();
+        }),
+      );
+    });
+
+    LIST_COLLECTION_KEYS.forEach((key) => {
+      unsubs.push(
+        onSnapshot(listCollectionRef(rootRef, key), (snapshot) => {
+          working[key] = snapshot.docs
+            .map((item) => item.data() as IndexedFirestoreDoc<CharacterData[typeof key][number]>)
+            .sort((left, right) => (left._sortOrder ?? 0) - (right._sortOrder ?? 0))
+            .map((item) => stripSortOrder(item)) as CharacterData[typeof key];
+          emit();
+        }),
+      );
+    });
+  }
+
+  const rootUnsub = onSnapshot(ref, async (snapshot) => {
+    if (!snapshot.exists()) {
+      if (!missingHandled) {
+        missingHandled = true;
+        await onMissing();
+      }
+      return;
+    }
+
+    missingHandled = false;
 
     const raw = snapshot.data();
     if (isLegacyCharacterPayload(raw)) {
@@ -291,8 +360,15 @@ export function subscribeToCharacter(
       return;
     }
 
-    onData(await loadStructuredCharacter(services, userId, CHARACTER_ID));
+    applyRootToCharacter(working, raw as Partial<CharacterRootDoc>);
+    emit();
+    attachStructuredListeners(ref);
   });
+
+  return () => {
+    rootUnsub();
+    unsubs.forEach((unsubscribe) => unsubscribe());
+  };
 }
 
 export async function saveCharacter(services: FirebaseServices, userId: string, data: CharacterData) {
@@ -309,6 +385,50 @@ export async function saveCharacter(services: FirebaseServices, userId: string, 
   await batch.commit();
 
   await Promise.all(LIST_COLLECTION_KEYS.map((key) => syncIndexedCollection(rootRef, key, split.lists[key])));
+}
+
+export async function saveCharacterChanges(
+  services: FirebaseServices,
+  userId: string,
+  previous: CharacterData,
+  next: CharacterData,
+) {
+  if (areEqual(previous, next)) {
+    return;
+  }
+
+  const previousSplit = splitCharacterForStorage(previous);
+  const nextSplit = splitCharacterForStorage(next);
+  const rootRef = characterRootRef(services, userId, next.id);
+  const batch = writeBatch(services.db);
+  let hasBatchWrites = false;
+
+  if (
+    !areEqual(previousSplit.root.id, nextSplit.root.id) ||
+    !areEqual(previousSplit.root.core, nextSplit.root.core) ||
+    !areEqual(previousSplit.root.currentSessionLabel, nextSplit.root.currentSessionLabel) ||
+    !areEqual(previousSplit.root.notes, nextSplit.root.notes)
+  ) {
+    batch.set(rootRef, nextSplit.root);
+    hasBatchWrites = true;
+  }
+
+  STATE_DOC_KEYS.forEach((key) => {
+    if (!areEqual(previousSplit.state[key], nextSplit.state[key])) {
+      batch.set(stateDocRef(rootRef, key), nextSplit.state[key]);
+      hasBatchWrites = true;
+    }
+  });
+
+  if (hasBatchWrites) {
+    await batch.commit();
+  }
+
+  await Promise.all(
+    LIST_COLLECTION_KEYS.filter((key) => !areEqual(previousSplit.lists[key], nextSplit.lists[key])).map((key) =>
+      syncIndexedCollection(rootRef, key, nextSplit.lists[key]),
+    ),
+  );
 }
 
 export { configReady as isFirebaseConfigured };
