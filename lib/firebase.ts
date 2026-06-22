@@ -129,6 +129,22 @@ function stripSortOrder<T>(data: IndexedFirestoreDoc<T>): T {
   return rest as T;
 }
 
+function setStateValue<Key extends StateDocKey>(
+  target: Pick<CharacterData, StateDocKey>,
+  key: Key,
+  value: CharacterData[Key],
+) {
+  target[key] = value;
+}
+
+function setListValue<Key extends ListCollectionKey>(
+  target: Pick<CharacterData, ListCollectionKey>,
+  key: Key,
+  value: CharacterData[Key],
+) {
+  target[key] = value;
+}
+
 function cloneCharacter(data: CharacterData) {
   return JSON.parse(JSON.stringify(data)) as CharacterData;
 }
@@ -160,16 +176,19 @@ async function loadStructuredCharacter(
 
   const rootData = (rootSnapshot.data() as Partial<CharacterRootDoc> | undefined) ?? {};
 
-  const state = STATE_DOC_KEYS.reduce((accumulator, key, index) => {
-    accumulator[key] = (stateSnapshots[index].data() as CharacterData[typeof key] | undefined) ?? seed[key];
-    return accumulator;
-  }, {} as Pick<CharacterData, StateDocKey>);
+  const state = {} as Pick<CharacterData, StateDocKey>;
+  STATE_DOC_KEYS.forEach((key, index) => {
+    const snapshotValue = stateSnapshots[index].data() as CharacterData[typeof key] | undefined;
+    setStateValue(state, key, (snapshotValue ?? seed[key]) as CharacterData[typeof key]);
+  });
 
-  const listEntries = await Promise.all(
-    LIST_COLLECTION_KEYS.map(async (key) => [key, await loadIndexedCollection<CharacterData[typeof key][number]>(rootRef, key)] as const),
+  const lists = {} as Pick<CharacterData, ListCollectionKey>;
+  await Promise.all(
+    LIST_COLLECTION_KEYS.map(async (key) => {
+      const items = await loadIndexedCollection<CharacterData[typeof key][number]>(rootRef, key);
+      setListValue(lists, key, items as CharacterData[typeof key]);
+    }),
   );
-
-  const lists = Object.fromEntries(listEntries) as Pick<CharacterData, ListCollectionKey>;
 
   return {
     ...seed,
@@ -323,7 +342,7 @@ export function subscribeToCharacter(
             return;
           }
 
-          working[key] = snapshot.data() as CharacterData[typeof key];
+          setStateValue(working, key, snapshot.data() as CharacterData[typeof key]);
           emit();
         }),
       );
@@ -332,10 +351,11 @@ export function subscribeToCharacter(
     LIST_COLLECTION_KEYS.forEach((key) => {
       unsubs.push(
         onSnapshot(listCollectionRef(rootRef, key), (snapshot) => {
-          working[key] = snapshot.docs
+          const items = snapshot.docs
             .map((item) => item.data() as IndexedFirestoreDoc<CharacterData[typeof key][number]>)
             .sort((left, right) => (left._sortOrder ?? 0) - (right._sortOrder ?? 0))
             .map((item) => stripSortOrder(item)) as CharacterData[typeof key];
+          setListValue(working, key, items);
           emit();
         }),
       );
