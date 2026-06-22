@@ -857,29 +857,27 @@ function SpellLevelSection({
   spells,
   slotCurrent,
   slotMax,
-  feedback,
-  onCast,
   onTogglePrepared,
   onSlotChange,
   editing = false,
   onUpdateSpell,
   onDeleteSpell,
+  showSlotTracker = true,
 }: {
   title: string;
   spells: Spell[];
   slotCurrent?: number;
   slotMax?: number;
-  feedback: Record<string, string>;
-  onCast: (spell: Spell) => void;
   onTogglePrepared: (spellId: string) => void;
   onSlotChange?: (next: number) => void;
   editing?: boolean;
   onUpdateSpell?: (spellId: string, field: keyof Spell, value: string | number | boolean) => void;
   onDeleteSpell?: (spellId: string) => void;
+  showSlotTracker?: boolean;
 }) {
   return (
-    <ShellCard title={title} subtitle={slotMax ? `${slotCurrent}/${slotMax} slots left` : "No spell slots required."}>
-      {slotMax && onSlotChange ? (
+    <ShellCard title={title} subtitle={showSlotTracker && slotMax ? `${slotCurrent}/${slotMax} slots left` : undefined}>
+      {showSlotTracker && slotMax && onSlotChange ? (
         <div className="mb-4">
           <SpellSlotTracker current={slotCurrent ?? 0} max={slotMax} onChange={onSlotChange} />
         </div>
@@ -914,9 +912,6 @@ function SpellLevelSection({
                     </label>
                   </div>
                   <div className="flex flex-col gap-2 md:justify-self-end">
-                    <button type="button" onClick={() => onCast(spell)} className={cx("kit-action-button min-h-10 rounded-xl", feedback[`spell-${spell.id}`] ? "brightness-110" : "")}>
-                      {feedback[`spell-${spell.id}`] ?? "Cast"}
-                    </button>
                     <button
                       type="button"
                       disabled={spell.alwaysPrepared}
@@ -959,9 +954,6 @@ function SpellLevelSection({
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 md:justify-self-end">
-                    <button type="button" onClick={() => onCast(spell)} className={cx("kit-action-button min-h-10 rounded-xl", feedback[`spell-${spell.id}`] ? "brightness-110" : "")}>
-                      {feedback[`spell-${spell.id}`] ?? "Cast"}
-                    </button>
                     <button
                       type="button"
                       disabled={spell.alwaysPrepared}
@@ -1076,14 +1068,25 @@ function CombatSpellTable({
   rows,
   feedback,
   onCast,
+  slotCurrent,
+  slotMax,
+  onSlotChange,
 }: {
   title: string;
   rows: CombatSpellRowData[];
   feedback: Record<string, string>;
   onCast: (spellId: string) => void;
+  slotCurrent?: number;
+  slotMax?: number;
+  onSlotChange?: (next: number) => void;
 }) {
   return (
-    <ShellCard title={title}>
+    <ShellCard title={title} subtitle={slotMax ? `${slotCurrent}/${slotMax} slots left` : "No spell slots required."}>
+      {slotMax && onSlotChange ? (
+        <div className="mb-4">
+          <SpellSlotTracker current={slotCurrent ?? 0} max={slotMax} onChange={onSlotChange} />
+        </div>
+      ) : null}
       <TableSurface className="bg-transparent">
         <TableHeaderRow className="grid-cols-[1fr_0.8fr_0.75fr_0.8fr_1.5fr_0.55fr_0.45fr] gap-3">
           <span>Name</span>
@@ -1230,6 +1233,9 @@ export function FieldKitApp() {
         })),
     [character.spells],
   );
+  const combatCantrips = useMemo(() => preparedCombatSpells.filter((spell) => spell.cost === "Cantrip"), [preparedCombatSpells]);
+  const combatFirstLevelSpells = useMemo(() => preparedCombatSpells.filter((spell) => spell.cost === "Lv 1"), [preparedCombatSpells]);
+  const combatSecondLevelSpells = useMemo(() => preparedCombatSpells.filter((spell) => spell.cost === "Lv 2"), [preparedCombatSpells]);
   const currentRestElixirs = useMemo(
     () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
     [character.elixirs, currentPreparationId],
@@ -2045,10 +2051,34 @@ export function FieldKitApp() {
                 feedback={feedback}
                 onUse={(row) => handleActionRowUse(row, "action")}
               />
-              <CombatSpellTable title="Spells" rows={preparedCombatSpells} feedback={feedback} onCast={(spellId) => {
+              <CombatSpellTable title="Cantrips" rows={combatCantrips} feedback={feedback} onCast={(spellId) => {
                 const spell = character.spells.find((item) => item.id === spellId);
                 if (spell) castSpell(spell);
               }} />
+              <CombatSpellTable
+                title="Level 1 Spells"
+                rows={combatFirstLevelSpells}
+                slotCurrent={character.resources.find((item) => item.id === "slot1")?.current ?? 0}
+                slotMax={character.resources.find((item) => item.id === "slot1")?.max ?? 0}
+                onSlotChange={(next) => updateSpellSlotResource("slot1", next)}
+                feedback={feedback}
+                onCast={(spellId) => {
+                  const spell = character.spells.find((item) => item.id === spellId);
+                  if (spell) castSpell(spell);
+                }}
+              />
+              <CombatSpellTable
+                title="Level 2 Spells"
+                rows={combatSecondLevelSpells}
+                slotCurrent={character.resources.find((item) => item.id === "slot2")?.current ?? 0}
+                slotMax={character.resources.find((item) => item.id === "slot2")?.max ?? 0}
+                onSlotChange={(next) => updateSpellSlotResource("slot2", next)}
+                feedback={feedback}
+                onCast={(spellId) => {
+                  const spell = character.spells.find((item) => item.id === spellId);
+                  if (spell) castSpell(spell);
+                }}
+              />
               <ActionTable title="Actions" rows={buildActionRows("action")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "action")} />
               <ActionTable title="Bonus Actions" rows={buildActionRows("bonus")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "bonus")} />
               <ActionTable title="Reactions" rows={buildActionRows("reaction")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "reaction")} />
@@ -2111,32 +2141,30 @@ export function FieldKitApp() {
                     : null}
                 </div>
               </ShellCard>
-              <SpellLevelSection title="Cantrips" spells={cantrips} feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} editing={spellEditMode} onUpdateSpell={updateSpellField} onDeleteSpell={deleteSpell} />
+              <SpellLevelSection title="Cantrips" spells={cantrips} onTogglePrepared={togglePrepared} editing={spellEditMode} onUpdateSpell={updateSpellField} onDeleteSpell={deleteSpell} showSlotTracker={false} />
               <SpellLevelSection
                 title="Level 1 Spells"
                 spells={firstLevelSpells}
                 slotCurrent={character.resources.find((item) => item.id === "slot1")?.current ?? 0}
                 slotMax={character.resources.find((item) => item.id === "slot1")?.max ?? 0}
-                feedback={feedback}
-                onCast={castSpell}
                 onTogglePrepared={togglePrepared}
                 onSlotChange={(next) => updateSpellSlotResource("slot1", next)}
                 editing={spellEditMode}
                 onUpdateSpell={updateSpellField}
                 onDeleteSpell={deleteSpell}
+                showSlotTracker={false}
               />
               <SpellLevelSection
                 title="Level 2 Spells"
                 spells={secondLevelSpells}
                 slotCurrent={character.resources.find((item) => item.id === "slot2")?.current ?? 0}
                 slotMax={character.resources.find((item) => item.id === "slot2")?.max ?? 0}
-                feedback={feedback}
-                onCast={castSpell}
                 onTogglePrepared={togglePrepared}
                 onSlotChange={(next) => updateSpellSlotResource("slot2", next)}
                 editing={spellEditMode}
                 onUpdateSpell={updateSpellField}
                 onDeleteSpell={deleteSpell}
+                showSlotTracker={false}
               />
             </div>
           ) : null}
