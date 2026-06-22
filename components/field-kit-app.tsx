@@ -230,6 +230,22 @@ function upsertSpell(spells: Spell[], next: Spell) {
   spells.push(next);
 }
 
+function upsertAttack(attacks: Attack[], next: Attack) {
+  const existing = attacks.find((attack) => attack.id === next.id);
+  if (existing) {
+    existing.name = next.name;
+    existing.attackBonus = next.attackBonus;
+    existing.damage = next.damage;
+    existing.damageType = next.damageType;
+    existing.range = next.range;
+    existing.traits = next.traits;
+    existing.equipped = next.equipped;
+    return;
+  }
+
+  attacks.push(next);
+}
+
 function upsertFeature(features: Feature[], next: Feature) {
   const existing = features.find((feature) => feature.id === next.id);
   if (existing) {
@@ -305,6 +321,12 @@ function migrateCharacter(draft: CharacterData) {
     category: "passive",
     trigger: "Charm effects and fey magic",
     effect: "Advantage on saves against charm effects, plus 2 charges of Misty Step and 1 charge of Heroism each long rest.",
+  });
+
+  draft.attacks.forEach((attack) => {
+    if (typeof attack.equipped !== "boolean") {
+      attack.equipped = true;
+    }
   });
 
   if ((draft.ui.activeView as string) === "veech") {
@@ -1126,6 +1148,89 @@ function CombatSpellTable({
   );
 }
 
+function WeaponTable({
+  rows,
+  editing = false,
+  onToggleEquipped,
+  onUpdateWeapon,
+  onDeleteWeapon,
+}: {
+  rows: Attack[];
+  editing?: boolean;
+  onToggleEquipped: (weaponId: string) => void;
+  onUpdateWeapon?: (weaponId: string, field: keyof Attack, value: string | boolean) => void;
+  onDeleteWeapon?: (weaponId: string) => void;
+}) {
+  return (
+    <TableSurface className="rounded-[20px]">
+      <TableHeaderRow className="grid-cols-[0.95fr_1.85fr_0.7fr_0.8fr] gap-3">
+        <span>Name</span>
+        <span>Profile</span>
+        <span>Traits</span>
+        <span className="text-right">Status</span>
+      </TableHeaderRow>
+      {rows.length === 0 ? (
+        <div className="px-4 py-4 text-sm text-[var(--muted)]">No weapons added yet.</div>
+      ) : (
+        rows.map((weapon) => (
+          <TableBodyRow key={weapon.id} className="grid gap-3 md:grid-cols-[0.95fr_1.85fr_0.7fr_0.8fr] md:items-start md:gap-4">
+            {editing && onUpdateWeapon ? (
+              <>
+                <div className="space-y-3">
+                  <TextInput label="Name" value={weapon.name} onChange={(value) => onUpdateWeapon(weapon.id, "name", value)} />
+                  <TextInput label="Attack Bonus" value={weapon.attackBonus} onChange={(value) => onUpdateWeapon(weapon.id, "attackBonus", value)} />
+                </div>
+                <div className="space-y-3">
+                  <TextInput label="Damage" value={weapon.damage} onChange={(value) => onUpdateWeapon(weapon.id, "damage", value)} />
+                  <TextInput label="Damage Type" value={weapon.damageType} onChange={(value) => onUpdateWeapon(weapon.id, "damageType", value)} />
+                  <TextInput label="Range" value={weapon.range} onChange={(value) => onUpdateWeapon(weapon.id, "range", value)} />
+                </div>
+                <div className="space-y-3">
+                  <TextInput
+                    label="Traits"
+                    value={weapon.traits.join(", ")}
+                    onChange={(value) => onUpdateWeapon(weapon.id, "traits", value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-2 md:justify-self-end">
+                  <button type="button" onClick={() => onToggleEquipped(weapon.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
+                    {weapon.equipped ? "Equipped" : "Unequipped"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteWeapon?.(weapon.id)}
+                    className="flex min-h-10 items-center justify-center rounded-xl border border-[var(--line)] bg-white px-4 text-[var(--red)]"
+                    aria-label={`Delete ${weapon.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="font-semibold">{weapon.name}</h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{weapon.attackBonus} to hit</p>
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--muted)]">{weapon.damage} {weapon.damageType}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">Range: {weapon.range}</p>
+                </div>
+                <p className="text-sm leading-6 text-[var(--muted)]">{weapon.traits.join(", ") || "—"}</p>
+                <div className="md:text-right">
+                  <button type="button" onClick={() => onToggleEquipped(weapon.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
+                    {weapon.equipped ? "Equipped" : "Unequipped"}
+                  </button>
+                </div>
+              </>
+            )}
+          </TableBodyRow>
+        ))
+      )}
+    </TableSurface>
+  );
+}
+
 function TextInput({
   label,
   value,
@@ -1184,6 +1289,7 @@ export function FieldKitApp() {
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [manualLog, setManualLog] = useState("");
   const [spellEditMode, setSpellEditMode] = useState(false);
+  const [weaponEditMode, setWeaponEditMode] = useState(false);
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionNote, setSessionNote] = useState("");
@@ -1206,6 +1312,10 @@ export function FieldKitApp() {
   const cantrips = useMemo(() => visibleSpells.filter((spell) => spell.level === 0), [visibleSpells]);
   const firstLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 1), [visibleSpells]);
   const secondLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 2), [visibleSpells]);
+  const equippedWeapons = useMemo(
+    () => character.attacks.filter((attack) => attack.equipped),
+    [character.attacks],
+  );
   const currentPreparationId = character.longRest.currentPreparationId;
   const proficiencyBonusValue = Number(character.stats.proficiencyBonus) || 0;
   const skillRows = useMemo(
@@ -1586,6 +1696,68 @@ export function FieldKitApp() {
     if (!target) return;
     commit("Deleted spell", (draft) => {
       draft.spells = draft.spells.filter((spell) => spell.id !== spellId);
+    });
+    showToast(`${target.name} deleted.`);
+  }
+
+  function toggleEquipped(weaponId: string) {
+    commit("Updated equipped weapon", (draft) => {
+      const weapon = draft.attacks.find((item) => item.id === weaponId);
+      if (weapon) {
+        weapon.equipped = !weapon.equipped;
+      }
+    });
+  }
+
+  function updateWeaponField(weaponId: string, field: keyof Attack, value: string | boolean) {
+    commit("Updated weapon", (draft) => {
+      const weapon = draft.attacks.find((item) => item.id === weaponId);
+      if (!weapon) return;
+
+      switch (field) {
+        case "name":
+        case "attackBonus":
+        case "damage":
+        case "damageType":
+        case "range":
+          weapon[field] = String(value);
+          break;
+        case "traits":
+          weapon.traits = String(value)
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+          break;
+        case "equipped":
+          weapon.equipped = Boolean(value);
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  function addWeapon() {
+    commit("Added weapon", (draft) => {
+      draft.attacks.push({
+        id: crypto.randomUUID(),
+        name: "New Weapon",
+        attackBonus: "+0",
+        damage: "1d6",
+        damageType: "damage type",
+        range: "Melee",
+        traits: [],
+        equipped: false,
+      });
+    });
+    showToast("Weapon added.");
+  }
+
+  function deleteWeapon(weaponId: string) {
+    const target = character.attacks.find((weapon) => weapon.id === weaponId);
+    if (!target) return;
+    commit("Deleted weapon", (draft) => {
+      draft.attacks = draft.attacks.filter((weapon) => weapon.id !== weaponId);
     });
     showToast(`${target.name} deleted.`);
   }
@@ -1971,7 +2143,7 @@ export function FieldKitApp() {
             <div className="space-y-4">
               <ActionTable
                 title="Weapons"
-                rows={character.attacks.map((attack) => ({
+                rows={equippedWeapons.map((attack) => ({
                   id: attack.id,
                   name: attack.name,
                   typeOrTrigger: "Weapon",
@@ -2176,6 +2348,38 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "inventory" ? (
             <div className="space-y-4">
+              <ShellCard title="Weapons" compact>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWeaponEditMode((current) => !current)}
+                    className={cx(
+                      "flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm",
+                      weaponEditMode ? "bg-[var(--green)] text-white" : "border border-[var(--line)] bg-white text-[var(--text)]",
+                    )}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {weaponEditMode ? "Done Editing" : "Edit Weapons"}
+                  </button>
+                  {weaponEditMode ? (
+                    <button type="button" onClick={addWeapon} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-4 text-sm">
+                      <Plus className="h-4 w-4" />
+                      Add Weapon
+                    </button>
+                  ) : null}
+                </div>
+              </ShellCard>
+
+              <ShellCard title="Weapons Loadout" subtitle="Create, update, and equip the weapons that should appear in combat.">
+                <WeaponTable
+                  rows={character.attacks}
+                  editing={weaponEditMode}
+                  onToggleEquipped={toggleEquipped}
+                  onUpdateWeapon={updateWeaponField}
+                  onDeleteWeapon={deleteWeapon}
+                />
+              </ShellCard>
+
               <ShellCard title="Active Infusions" subtitle={`Active infusions: ${activeInfusions.length} / 3`}>
                 <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
                   {character.infusionsActive.map((infusion) => (

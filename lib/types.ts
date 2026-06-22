@@ -40,6 +40,7 @@ export type Attack = {
   damageType: string;
   range: string;
   traits: string[];
+  equipped?: boolean;
 };
 
 export type Spell = {

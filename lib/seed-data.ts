@@ -81,10 +81,10 @@ export const createSeedCharacter = (): CharacterData => ({
     expanded: true,
   },
   attacks: [
-    { id: "blood-spear", name: "Blood Spear", attackBonus: "+4", damage: "1d6+1", damageType: "piercing", range: "20/60", traits: ["thrown", "versatile", "sap"] },
-    { id: "crossbow", name: "Light Crossbow", attackBonus: "+5", damage: "1d8+2", damageType: "piercing", range: "80/320", traits: ["ammunition", "loading", "two-handed", "slow"] },
-    { id: "dagger", name: "Dagger", attackBonus: "+5", damage: "1d4+2", damageType: "piercing", range: "20/60", traits: ["finesse", "light", "thrown", "nick"] },
-    { id: "dart", name: "Dart", attackBonus: "+5", damage: "1d4+2", damageType: "piercing", range: "20/60", traits: ["finesse", "thrown", "vex"] },
+    { id: "blood-spear", name: "Blood Spear", attackBonus: "+4", damage: "1d6+1", damageType: "piercing", range: "20/60", traits: ["thrown", "versatile", "sap"], equipped: true },
+    { id: "crossbow", name: "Light Crossbow", attackBonus: "+5", damage: "1d8+2", damageType: "piercing", range: "80/320", traits: ["ammunition", "loading", "two-handed", "slow"], equipped: true },
+    { id: "dagger", name: "Dagger", attackBonus: "+5", damage: "1d4+2", damageType: "piercing", range: "20/60", traits: ["finesse", "light", "thrown", "nick"], equipped: true },
+    { id: "dart", name: "Dart", attackBonus: "+5", damage: "1d4+2", damageType: "piercing", range: "20/60", traits: ["finesse", "thrown", "vex"], equipped: false },
   ],
   spells: [
     { id: "guidance", name: "Guidance", level: 0, prepared: true, alwaysPrepared: true, actionType: "action", range: "Touch", concentration: true, saveOrAttack: "Utility", summary: "Add 1d4 to one ability check.", tags: ["utility", "support", "cantrip"] },
