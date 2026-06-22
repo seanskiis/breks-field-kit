@@ -391,7 +391,7 @@ function ShellCard({
   compact?: boolean;
 }) {
   return (
-    <section className={cx("rounded-[28px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)]", compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5", className)}>
+    <section className={cx("kit-frame border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)]", compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5", className)}>
       {(title || subtitle) && (
         <header className={compact ? "mb-3" : "mb-4"}>
           {title ? <h2 className={cx("font-semibold text-[var(--text)]", compact ? "text-lg" : "text-xl")}>{title}</h2> : null}
@@ -410,7 +410,7 @@ function TableSurface({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cx("overflow-hidden rounded-[22px] border border-[var(--line)] bg-white/82", className)}>{children}</div>;
+  return <div className={cx("kit-surface overflow-hidden border border-[var(--line)] bg-white/82", className)}>{children}</div>;
 }
 
 function TableHeaderRow({
@@ -491,7 +491,7 @@ function FieldValueInput({
   onKeyDown: KeyboardEventHandler<HTMLInputElement>;
 }) {
   return (
-    <div className="rounded-[24px] border border-[var(--line)] bg-white/82 p-4">
+    <div className="kit-frame border border-[var(--line)] bg-white/82 p-4">
       <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p>
       <div className="mt-3 flex items-end gap-3">
         <input
@@ -501,7 +501,7 @@ function FieldValueInput({
           onChange={(event) => onChange(event.target.value)}
           onBlur={onBlur}
           onKeyDown={onKeyDown}
-          className="min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-center text-4xl font-bold outline-none transition focus:border-[var(--green)]"
+          className="kit-control min-w-0 border border-[var(--line)] bg-[var(--panel-strong)] px-4 py-3 text-center text-4xl font-bold outline-none transition focus:border-[var(--green)]"
         />
         {denominator ? <p className="pb-2 text-xl font-semibold text-[var(--muted)]">/ {denominator}</p> : null}
       </div>
@@ -574,7 +574,7 @@ function EditableNumberRow({
               event.currentTarget.blur();
             }
           }}
-          className={cx("rounded-xl border border-[var(--line)] bg-[var(--panel-strong)] text-right font-bold outline-none transition focus:border-[var(--green)]", compact ? "w-20 px-2.5 py-1.5 text-lg" : "w-24 px-3 py-2 text-xl")}
+          className={cx("kit-control border border-[var(--line)] bg-[var(--panel-strong)] text-right font-bold outline-none transition focus:border-[var(--green)]", compact ? "w-20 px-2.5 py-1.5 text-lg" : "w-24 px-3 py-2 text-xl")}
         />
         {denominator ? <span className={cx("min-w-[2.5rem] text-left font-semibold text-[var(--muted)]", compact ? "text-xs" : "text-sm")}>/ {denominator}</span> : null}
       </div>
@@ -962,7 +962,7 @@ function TextInput({
       <span>{label}</span>
       <input
         aria-label={label}
-        className="min-h-11 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none transition focus:border-[var(--green)]"
+        className="kit-control min-h-11 border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none transition focus:border-[var(--green)]"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -988,7 +988,7 @@ function TextArea({
       <textarea
         aria-label={label}
         rows={rows}
-        className="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none transition focus:border-[var(--green)]"
+        className="kit-control border border-[var(--line)] bg-white px-3 py-2 text-[var(--text)] outline-none transition focus:border-[var(--green)]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
