@@ -11,9 +11,12 @@ import {
   LogIn,
   LogOut,
   MoonStar,
+  Pencil,
+  Plus,
   Shield,
   Sparkles,
   Swords,
+  Trash2,
   WandSparkles,
 } from "lucide-react";
 import { createSeedCharacter } from "@/lib/seed-data";
@@ -639,9 +642,9 @@ function matchesPreparedFilter(spell: Spell, filter: string) {
 }
 
 function getCastingTime(spell: Spell) {
+  if (spell.castingTime) return spell.castingTime;
   const override = SPELL_DISPLAY_OVERRIDES[spell.id];
   if (override?.castingTime) return override.castingTime;
-  if (spell.castingTime) return spell.castingTime;
   if (spell.actionType === "action") return "1 Action";
   if (spell.actionType === "bonus") return "1 Bonus Action";
   if (spell.actionType === "reaction") return "1 Reaction";
@@ -649,9 +652,9 @@ function getCastingTime(spell: Spell) {
 }
 
 function getHitDc(spell: Spell) {
+  if (spell.hitDc) return spell.hitDc;
   const override = SPELL_DISPLAY_OVERRIDES[spell.id];
   if (override?.hitDc) return override.hitDc;
-  if (spell.hitDc) return spell.hitDc;
   const match = spell.saveOrAttack.match(/^([A-Za-z]+)\s+save\s+(\d+)$/i);
   if (match) return `${match[1].slice(0, 3).toUpperCase()} ${match[2]}`;
   const attackMatch = spell.saveOrAttack.match(/^([+-]\d+)\s+attack$/i);
@@ -660,9 +663,9 @@ function getHitDc(spell: Spell) {
 }
 
 function getEffectText(spell: Spell) {
+  if (spell.effectText) return spell.effectText;
   const override = SPELL_DISPLAY_OVERRIDES[spell.id];
   if (override?.effectText) return override.effectText;
-  if (spell.effectText) return spell.effectText;
   return spell.summary;
 }
 
@@ -679,18 +682,19 @@ function getEffectIcon(spell: Spell) {
 }
 
 function getAreaOfEffect(spell: Spell) {
+  if (spell.areaOfEffect) return spell.areaOfEffect;
   const override = SPELL_DISPLAY_OVERRIDES[spell.id];
   if (override?.areaOfEffect) return override.areaOfEffect;
-  if (spell.areaOfEffect) return spell.areaOfEffect;
   const selfAreaMatch = spell.range.match(/^Self \((.+)\)$/i);
   if (selfAreaMatch) return selfAreaMatch[1];
   return "—";
 }
 
 function getComponents(spell: Spell) {
+  if (spell.components) return spell.components;
   const override = SPELL_DISPLAY_OVERRIDES[spell.id];
   if (override?.components) return override.components;
-  return spell.components ?? "—";
+  return "—";
 }
 
 function SpellSlotTracker({
@@ -742,6 +746,9 @@ function SpellLevelSection({
   onCast,
   onTogglePrepared,
   onSlotChange,
+  editing = false,
+  onUpdateSpell,
+  onDeleteSpell,
 }: {
   title: string;
   spells: Spell[];
@@ -751,6 +758,9 @@ function SpellLevelSection({
   onCast: (spell: Spell) => void;
   onTogglePrepared: (spellId: string) => void;
   onSlotChange?: (next: number) => void;
+  editing?: boolean;
+  onUpdateSpell?: (spellId: string, field: keyof Spell, value: string | number | boolean) => void;
+  onDeleteSpell?: (spellId: string) => void;
 }) {
   return (
     <ShellCard title={title} subtitle={slotMax ? `${slotCurrent}/${slotMax} slots left` : "No spell slots required."}>
@@ -765,40 +775,94 @@ function SpellLevelSection({
         ) : (
           spells.map((spell) => (
             <TableBodyRow key={spell.id} className="grid gap-3 md:grid-cols-[0.85fr_2fr_0.7fr] md:items-start md:gap-4">
-              <div>
-                <h3 className="font-semibold">{spell.name}</h3>
-                <div className="mt-2 grid gap-1 text-sm text-[var(--muted)]">
-                  <p><span className="font-medium text-[var(--text)]">Casting Time:</span> {getCastingTime(spell)}</p>
-                  <p><span className="font-medium text-[var(--text)]">Range:</span> {spell.range}</p>
-                  <p><span className="font-medium text-[var(--text)]">Hit / DC:</span> {getHitDc(spell)}</p>
-                  <p><span className="font-medium text-[var(--text)]">Components:</span> {getComponents(spell)}</p>
-                  <p><span className="font-medium text-[var(--text)]">Area:</span> {getAreaOfEffect(spell)}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm leading-6 text-[var(--muted)]">
-                  <span className="mr-2 font-semibold text-[var(--text)]">{getEffectIcon(spell)}</span>
-                  <span><span className="font-medium text-[var(--text)]">Effect:</span> {getEffectText(spell)}</span>
-                </p>
-              </div>
-              <div className="flex flex-col gap-2 md:justify-self-end">
-                <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
-                  {feedback[`spell-${spell.id}`] ?? "Cast"}
-                </button>
-                <button
-                  type="button"
-                  disabled={spell.alwaysPrepared}
-                  onClick={() => onTogglePrepared(spell.id)}
-                  className={cx(
-                    "min-h-10 rounded-xl border px-4 text-sm",
-                    spell.alwaysPrepared
-                      ? "cursor-not-allowed border-[var(--line)] bg-[var(--panel-strong)] text-[var(--muted)]"
-                      : "border-[var(--line)] bg-white text-[var(--text)]",
-                  )}
-                >
-                  {spell.alwaysPrepared ? "Always Prepared" : spell.prepared ? "Prepared" : "Unprepared"}
-                </button>
-              </div>
+              {editing && onUpdateSpell ? (
+                <>
+                  <div className="space-y-3">
+                    <TextInput label="Name" value={spell.name} onChange={(value) => onUpdateSpell(spell.id, "name", value)} />
+                    <TextInput label="Casting Time" value={spell.castingTime ?? getCastingTime(spell)} onChange={(value) => onUpdateSpell(spell.id, "castingTime", value)} />
+                    <TextInput label="Range" value={spell.range} onChange={(value) => onUpdateSpell(spell.id, "range", value)} />
+                    <TextInput label="Hit / DC" value={spell.hitDc ?? getHitDc(spell)} onChange={(value) => onUpdateSpell(spell.id, "hitDc", value)} />
+                    <TextInput label="Components" value={spell.components ?? getComponents(spell)} onChange={(value) => onUpdateSpell(spell.id, "components", value)} />
+                    <TextInput label="Area of Effect" value={spell.areaOfEffect ?? getAreaOfEffect(spell)} onChange={(value) => onUpdateSpell(spell.id, "areaOfEffect", value)} />
+                  </div>
+                  <div className="space-y-3">
+                    <TextInput label="Level" type="number" value={spell.level} onChange={(value) => onUpdateSpell(spell.id, "level", numberValue(value))} />
+                    <TextInput label="Action Type" value={spell.actionType} onChange={(value) => onUpdateSpell(spell.id, "actionType", value)} />
+                    <TextArea label="Effect" value={spell.effectText ?? getEffectText(spell)} onChange={(value) => onUpdateSpell(spell.id, "effectText", value)} rows={5} />
+                    <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+                      <input type="checkbox" checked={spell.alwaysPrepared ?? false} onChange={(event) => onUpdateSpell(spell.id, "alwaysPrepared", event.target.checked)} />
+                      Always prepared
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+                      <input type="checkbox" checked={spell.concentration} onChange={(event) => onUpdateSpell(spell.id, "concentration", event.target.checked)} />
+                      Concentration
+                    </label>
+                  </div>
+                  <div className="flex flex-col gap-2 md:justify-self-end">
+                    <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                      {feedback[`spell-${spell.id}`] ?? "Cast"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={spell.alwaysPrepared}
+                      onClick={() => onTogglePrepared(spell.id)}
+                      className={cx(
+                        "min-h-10 rounded-xl border px-4 text-sm",
+                        spell.alwaysPrepared
+                          ? "cursor-not-allowed border-[var(--line)] bg-[var(--panel-strong)] text-[var(--muted)]"
+                          : "border-[var(--line)] bg-white text-[var(--text)]",
+                      )}
+                    >
+                      {spell.alwaysPrepared ? "Always Prepared" : spell.prepared ? "Prepared" : "Unprepared"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteSpell?.(spell.id)}
+                      className="flex min-h-10 items-center justify-center rounded-xl border border-[var(--line)] bg-white px-4 text-[var(--red)]"
+                      aria-label={`Delete ${spell.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h3 className="font-semibold">{spell.name}</h3>
+                    <div className="mt-2 grid gap-1 text-sm text-[var(--muted)]">
+                      <p><span className="font-medium text-[var(--text)]">Casting Time:</span> {getCastingTime(spell)}</p>
+                      <p><span className="font-medium text-[var(--text)]">Range:</span> {spell.range}</p>
+                      <p><span className="font-medium text-[var(--text)]">Hit / DC:</span> {getHitDc(spell)}</p>
+                      <p><span className="font-medium text-[var(--text)]">Components:</span> {getComponents(spell)}</p>
+                      <p><span className="font-medium text-[var(--text)]">Area:</span> {getAreaOfEffect(spell)}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm leading-6 text-[var(--muted)]">
+                      <span className="mr-2 font-semibold text-[var(--text)]">{getEffectIcon(spell)}</span>
+                      <span><span className="font-medium text-[var(--text)]">Effect:</span> {getEffectText(spell)}</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 md:justify-self-end">
+                    <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                      {feedback[`spell-${spell.id}`] ?? "Cast"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={spell.alwaysPrepared}
+                      onClick={() => onTogglePrepared(spell.id)}
+                      className={cx(
+                        "min-h-10 rounded-xl border px-4 text-sm",
+                        spell.alwaysPrepared
+                          ? "cursor-not-allowed border-[var(--line)] bg-[var(--panel-strong)] text-[var(--muted)]"
+                          : "border-[var(--line)] bg-white text-[var(--text)]",
+                      )}
+                    >
+                      {spell.alwaysPrepared ? "Always Prepared" : spell.prepared ? "Prepared" : "Unprepared"}
+                    </button>
+                  </div>
+                </>
+              )}
             </TableBodyRow>
           ))
         )}
@@ -939,6 +1003,7 @@ export function FieldKitApp() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [manualLog, setManualLog] = useState("");
+  const [spellEditMode, setSpellEditMode] = useState(false);
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [sessionNote, setSessionNote] = useState("");
@@ -1237,6 +1302,49 @@ export function FieldKitApp() {
         spell.prepared = !spell.prepared;
       }
     });
+  }
+
+  function updateSpellField(spellId: string, field: keyof Spell, value: string | number | boolean) {
+    commit("Updated spell", (draft) => {
+      const spell = draft.spells.find((item) => item.id === spellId);
+      if (!spell) return;
+      (spell as Record<string, string | number | boolean | undefined>)[field] = value;
+      if (field === "alwaysPrepared" && value === true) {
+        spell.prepared = true;
+      }
+    });
+  }
+
+  function addSpell(level: number) {
+    commit("Added spell", (draft) => {
+      draft.spells.push({
+        id: crypto.randomUUID(),
+        name: "New Spell",
+        level,
+        prepared: false,
+        actionType: "action",
+        range: "Self",
+        concentration: false,
+        saveOrAttack: "",
+        summary: "",
+        tags: [],
+        castingTime: "1 Action",
+        hitDc: "—",
+        effectText: "",
+        components: "V, S",
+        areaOfEffect: "—",
+      });
+    });
+    showToast("Spell added.");
+  }
+
+  function deleteSpell(spellId: string) {
+    const target = character.spells.find((spell) => spell.id === spellId);
+    if (!target) return;
+    commit("Deleted spell", (draft) => {
+      draft.spells = draft.spells.filter((spell) => spell.id !== spellId);
+    });
+    showToast(`${target.name} deleted.`);
   }
 
   function toggleConsumeElixir(elixirId: string) {
@@ -1732,6 +1840,37 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "spells" ? (
             <div className="space-y-4">
+              <ShellCard title="Spell Editing" compact>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSpellEditMode((current) => !current)}
+                    className={cx(
+                      "flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm",
+                      spellEditMode ? "bg-[var(--green)] text-white" : "border border-[var(--line)] bg-white text-[var(--text)]",
+                    )}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    {spellEditMode ? "Done Editing" : "Edit Spells"}
+                  </button>
+                  {spellEditMode ? (
+                    <>
+                      <button type="button" onClick={() => addSpell(0)} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-4 text-sm">
+                        <Plus className="h-4 w-4" />
+                        Add Cantrip
+                      </button>
+                      <button type="button" onClick={() => addSpell(1)} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-4 text-sm">
+                        <Plus className="h-4 w-4" />
+                        Add Level 1
+                      </button>
+                      <button type="button" onClick={() => addSpell(2)} className="flex min-h-10 items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-4 text-sm">
+                        <Plus className="h-4 w-4" />
+                        Add Level 2
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </ShellCard>
               <ShellCard title="Prepared Filter" compact>
                 <div className="flex flex-wrap gap-2">
                   {["Prepared", "Not prepared", "All"].map((filter) => (
@@ -1757,7 +1896,7 @@ export function FieldKitApp() {
                   ))}
                 </div>
               </ShellCard>
-              <SpellLevelSection title="Cantrips" spells={cantrips} feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} />
+              <SpellLevelSection title="Cantrips" spells={cantrips} feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} editing={spellEditMode} onUpdateSpell={updateSpellField} onDeleteSpell={deleteSpell} />
               <SpellLevelSection
                 title="Level 1 Spells"
                 spells={firstLevelSpells}
@@ -1767,6 +1906,9 @@ export function FieldKitApp() {
                 onCast={castSpell}
                 onTogglePrepared={togglePrepared}
                 onSlotChange={(next) => updateSpellSlotResource("slot1", next)}
+                editing={spellEditMode}
+                onUpdateSpell={updateSpellField}
+                onDeleteSpell={deleteSpell}
               />
               <SpellLevelSection
                 title="Level 2 Spells"
@@ -1777,6 +1919,9 @@ export function FieldKitApp() {
                 onCast={castSpell}
                 onTogglePrepared={togglePrepared}
                 onSlotChange={(next) => updateSpellSlotResource("slot2", next)}
+                editing={spellEditMode}
+                onUpdateSpell={updateSpellField}
+                onDeleteSpell={deleteSpell}
               />
             </div>
           ) : null}
@@ -2122,55 +2267,22 @@ export function FieldKitApp() {
                 </div>
               </ShellCard>
 
-              <ShellCard title="Spell and Inventory Editing">
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <div className="space-y-4">
-                    {character.spells.map((spell) => (
-                      <div key={spell.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <TextInput label="Spell name" value={spell.name} onChange={(value) => commit("Updated spell", (draft) => {
-                            const target = draft.spells.find((item) => item.id === spell.id);
-                            if (target) target.name = value;
-                          })} />
-                          <TextInput label="Level" type="number" value={spell.level} onChange={(value) => commit("Updated spell", (draft) => {
-                            const target = draft.spells.find((item) => item.id === spell.id);
-                            if (target) target.level = numberValue(value);
-                          })} />
-                          <TextInput label="Range" value={spell.range} onChange={(value) => commit("Updated spell", (draft) => {
-                            const target = draft.spells.find((item) => item.id === spell.id);
-                            if (target) target.range = value;
-                          })} />
-                          <TextInput label="Action Type" value={spell.actionType} onChange={(value) => commit("Updated spell", (draft) => {
-                            const target = draft.spells.find((item) => item.id === spell.id);
-                            if (target) target.actionType = value as Spell["actionType"];
-                          })} />
-                        </div>
-                        <div className="mt-3">
-                          <TextArea label="Summary" value={spell.summary} onChange={(value) => commit("Updated spell", (draft) => {
-                            const target = draft.spells.find((item) => item.id === spell.id);
-                            if (target) target.summary = value;
-                          })} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-4">
-                    {character.inventory.map((category) => (
-                      <div key={category.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
-                        <TextInput label="Category" value={category.name} onChange={(value) => commit("Updated inventory", (draft) => {
+              <ShellCard title="Inventory Editing">
+                <div className="space-y-4">
+                  {character.inventory.map((category) => (
+                    <div key={category.id} className="rounded-[20px] border border-[var(--line)] bg-white/82 p-4">
+                      <TextInput label="Category" value={category.name} onChange={(value) => commit("Updated inventory", (draft) => {
+                        const target = draft.inventory.find((item) => item.id === category.id);
+                        if (target) target.name = value;
+                      })} />
+                      <div className="mt-3">
+                        <TextArea label="Items (one per line)" value={category.items.join("\n")} onChange={(value) => commit("Updated inventory", (draft) => {
                           const target = draft.inventory.find((item) => item.id === category.id);
-                          if (target) target.name = value;
-                        })} />
-                        <div className="mt-3">
-                          <TextArea label="Items (one per line)" value={category.items.join("\n")} onChange={(value) => commit("Updated inventory", (draft) => {
-                            const target = draft.inventory.find((item) => item.id === category.id);
-                            if (target) target.items = value.split("\n").map((item) => item.trim()).filter(Boolean);
-                          })} rows={6} />
-                        </div>
+                          if (target) target.items = value.split("\n").map((item) => item.trim()).filter(Boolean);
+                        })} rows={6} />
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </ShellCard>
             </div>
