@@ -1308,7 +1308,33 @@ export function FieldKitApp() {
     commit("Updated spell", (draft) => {
       const spell = draft.spells.find((item) => item.id === spellId);
       if (!spell) return;
-      (spell as Record<string, string | number | boolean | undefined>)[field] = value;
+
+      switch (field) {
+        case "name":
+        case "range":
+        case "castingTime":
+        case "hitDc":
+        case "effectText":
+        case "components":
+        case "areaOfEffect":
+          spell[field] = String(value);
+          break;
+        case "level":
+          spell.level = Number(value);
+          break;
+        case "actionType":
+          spell.actionType = String(value) as Spell["actionType"];
+          break;
+        case "alwaysPrepared":
+          spell.alwaysPrepared = Boolean(value);
+          break;
+        case "concentration":
+          spell.concentration = Boolean(value);
+          break;
+        default:
+          break;
+      }
+
       if (field === "alwaysPrepared" && value === true) {
         spell.prepared = true;
       }
