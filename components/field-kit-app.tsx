@@ -1804,8 +1804,10 @@ export function FieldKitApp() {
                   <FlaskConical className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">Brek&apos;s Field Kit</p>
-                  <h1 className="text-3xl leading-none">Session Dashboard</h1>
+                  <h1 className="text-3xl leading-none">{character.core.name.toUpperCase()}</h1>
+                  <p className="mt-1 text-sm uppercase tracking-[0.14em] text-[var(--muted)]">
+                    Level {character.core.level} {character.core.species} {character.core.subclass} {character.core.className}
+                  </p>
                 </div>
               </div>
               <nav className="mt-5 grid gap-2">
@@ -1847,21 +1849,6 @@ export function FieldKitApp() {
         </aside>
 
         <section className="min-w-0 space-y-4">
-          <ShellCard className="overflow-hidden bg-[linear-gradient(135deg,rgba(255,248,236,0.98),rgba(240,247,241,0.98))]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Field Journal</p>
-                <h1 className="mt-1 text-4xl leading-none">{character.core.name}</h1>
-                <p className="mt-2 text-lg text-[var(--muted)]">
-                  Level {character.core.level} {character.core.species} {character.core.subclass} {character.core.className}
-                </p>
-              </div>
-              <div className="flex h-24 w-24 items-center justify-center rounded-[28px] border border-[var(--line)] bg-white/70 text-4xl shadow-sm">
-                B
-              </div>
-            </div>
-          </ShellCard>
-
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
               <ShellCard title="Ability Scores & Saves" subtitle="Core numbers and saving throw proficiency are paired in one reference table.">
