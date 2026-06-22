@@ -1020,7 +1020,7 @@ function ActionTable({
           <span>Type / Trigger</span>
           <span>Summary</span>
           <span>Cost</span>
-          <span className="text-right">Use</span>
+          <span />
         </TableHeaderRow>
         {rows.map((row) => (
           <TableBodyRow
@@ -1095,7 +1095,7 @@ function CombatSpellTable({
           <span>Hit / DC</span>
           <span>Effect</span>
           <span>Cost</span>
-          <span className="text-right">Cast</span>
+          <span />
         </TableHeaderRow>
         {rows.map((row) => (
           <TableBodyRow key={row.id} className="bg-white/82 transition hover:bg-[var(--panel-strong)] active:bg-[var(--green-soft)]">
