@@ -36,6 +36,26 @@ const LOCAL_STORAGE_KEY = "breks-field-kit-cache";
 const ACTION_FEEDBACK_MS = 1400;
 const TOAST_TIMEOUT_MS = 5000;
 const ABILITY_ORDER = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"] as const;
+const SKILL_DEFINITIONS = [
+  { ability: "Dexterity", label: "Acrobatics", proficient: false },
+  { ability: "Wisdom", label: "Animal Handling", proficient: false },
+  { ability: "Intelligence", label: "Arcana", proficient: true },
+  { ability: "Strength", label: "Athletics", proficient: false },
+  { ability: "Charisma", label: "Deception", proficient: false },
+  { ability: "Intelligence", label: "History", proficient: false },
+  { ability: "Wisdom", label: "Insight", proficient: true },
+  { ability: "Charisma", label: "Intimidation", proficient: false },
+  { ability: "Intelligence", label: "Investigation", proficient: true },
+  { ability: "Wisdom", label: "Medicine", proficient: false },
+  { ability: "Intelligence", label: "Nature", proficient: false },
+  { ability: "Wisdom", label: "Perception", proficient: false },
+  { ability: "Charisma", label: "Performance", proficient: false },
+  { ability: "Charisma", label: "Persuasion", proficient: true },
+  { ability: "Intelligence", label: "Religion", proficient: false },
+  { ability: "Dexterity", label: "Sleight of Hand", proficient: false },
+  { ability: "Dexterity", label: "Stealth", proficient: false },
+  { ability: "Wisdom", label: "Survival", proficient: false },
+] as const;
 const LONG_REST_ELIXIRS = ["Healing", "Swiftness", "Resilience", "Boldness", "Flight", "Transformation"];
 const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -461,33 +481,93 @@ function StatTable({
   );
 }
 
+function ProficiencyBubble({
+  filled,
+}: {
+  filled: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        "inline-flex h-4 w-4 items-center justify-center border border-[var(--line)]",
+        filled ? "bg-[var(--brass)] shadow-[0_0_0_1px_rgba(240,176,67,0.18)]" : "bg-transparent",
+      )}
+    />
+  );
+}
+
 function AbilitySaveTable({
   rows,
 }: {
   rows: Array<{
     keyLabel: string;
+    abilityProficient: boolean;
     modifier: number;
     score: number;
     saveModifier: number;
-    proficient: boolean;
+    saveProficient: boolean;
   }>;
 }) {
   return (
     <TableSurface>
-      <div className="hidden grid-cols-[0.95fr_0.7fr_0.7fr_0.85fr_0.55fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+      <div className="hidden grid-cols-[0.35fr_0.95fr_0.7fr_0.7fr_0.08fr_0.35fr_0.85fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+        <span className="text-center">Prof</span>
         <span>Ability</span>
         <span className="text-right">Mod</span>
         <span className="text-right">Score</span>
+        <span className="justify-self-center">|</span>
+        <span className="text-center">Prof</span>
         <span className="text-right">Save Mod</span>
-        <span className="text-right">Prof</span>
       </div>
       {rows.map((row) => (
-        <TableBodyRow key={row.keyLabel} className="grid grid-cols-[1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.95fr_0.7fr_0.7fr_0.85fr_0.55fr] md:items-center">
+        <TableBodyRow
+          key={row.keyLabel}
+          className="grid grid-cols-[auto_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_0.95fr_0.7fr_0.7fr_0.08fr_0.35fr_0.85fr] md:items-center"
+        >
+          <span className="flex items-center justify-center">
+            <ProficiencyBubble filled={row.abilityProficient} />
+          </span>
           <p className="font-semibold uppercase tracking-[0.12em] md:tracking-[0.16em]">{row.keyLabel}</p>
           <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.modifier)}</p>
-          <p className="text-right text-sm text-[var(--muted)] md:text-base">{row.score}</p>
+          <p className="col-start-2 text-sm text-[var(--muted)] md:col-auto md:text-right md:text-base">{row.score}</p>
+          <span className="hidden h-full w-px justify-self-center bg-[color:rgba(216,154,54,0.65)] md:block" />
+          <span className="flex items-center justify-center">
+            <ProficiencyBubble filled={row.saveProficient} />
+          </span>
           <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.saveModifier)}</p>
-          <p className="text-right font-semibold text-[var(--muted)]">{row.proficient ? "Yes" : "—"}</p>
+        </TableBodyRow>
+      ))}
+    </TableSurface>
+  );
+}
+
+function SkillsTable({
+  rows,
+}: {
+  rows: Array<{
+    abilityLabel: string;
+    skillLabel: string;
+    proficient: boolean;
+    bonus: number;
+  }>;
+}) {
+  return (
+    <TableSurface>
+      <TableHeaderRow className="grid-cols-[0.35fr_0.6fr_1.35fr_0.7fr] gap-3">
+        <span className="text-center">Prof</span>
+        <span>Mod</span>
+        <span>Skill</span>
+        <span className="text-right">Bonus</span>
+      </TableHeaderRow>
+      {rows.map((row) => (
+        <TableBodyRow key={row.skillLabel} className="grid grid-cols-[auto_0.7fr_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_0.6fr_1.35fr_0.7fr] md:items-center">
+          <span className="flex items-center justify-center">
+            <ProficiencyBubble filled={row.proficient} />
+          </span>
+          <p className="font-semibold uppercase tracking-[0.12em] text-[var(--muted)] md:tracking-[0.16em]">{row.abilityLabel}</p>
+          <p className="font-semibold">{row.skillLabel}</p>
+          <p className="text-right text-[24px] font-bold leading-none">{formatSigned(row.bonus)}</p>
         </TableBodyRow>
       ))}
     </TableSurface>
@@ -1046,6 +1126,17 @@ export function FieldKitApp() {
   const firstLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 1), [visibleSpells]);
   const secondLevelSpells = useMemo(() => visibleSpells.filter((spell) => spell.level === 2), [visibleSpells]);
   const currentPreparationId = character.longRest.currentPreparationId;
+  const proficiencyBonusValue = Number(character.stats.proficiencyBonus) || 0;
+  const skillRows = useMemo(
+    () =>
+      SKILL_DEFINITIONS.map((skill) => ({
+        abilityLabel: skill.ability.slice(0, 3).toUpperCase(),
+        skillLabel: skill.label,
+        proficient: skill.proficient,
+        bonus: character.abilities[skill.ability].modifier + (skill.proficient ? proficiencyBonusValue : 0),
+      })),
+    [character.abilities, proficiencyBonusValue],
+  );
   const currentRestElixirs = useMemo(
     () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
     [character.elixirs, currentPreparationId],
@@ -1757,24 +1848,27 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "dashboard" ? (
             <div className="space-y-4">
-              <div className="space-y-4">
-                <ShellCard title="Ability Scores & Saves" subtitle="Core numbers and saving throw proficiency are paired in one reference table.">
-                  <AbilitySaveTable
-                    rows={ABILITY_ORDER.map((ability) => ({
-                      keyLabel: ability.slice(0, 3).toUpperCase(),
-                      modifier: character.abilities[ability].modifier,
-                      score: character.abilities[ability].score,
-                      saveModifier: character.savingThrows[ability].value,
-                      proficient: character.savingThrows[ability].proficient,
-                    }))}
-                  />
-                  <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
-                    <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on charm saves, plus 2 Misty Step charges and 1 Heroism charge each long rest.</p>
-                    <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
-                    <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
-                  </div>
-                </ShellCard>
-              </div>
+              <ShellCard title="Ability Scores & Saves" subtitle="Core numbers and saving throw proficiency are paired in one reference table.">
+                <AbilitySaveTable
+                  rows={ABILITY_ORDER.map((ability) => ({
+                    keyLabel: ability.slice(0, 3).toUpperCase(),
+                    abilityProficient: false,
+                    modifier: character.abilities[ability].modifier,
+                    score: character.abilities[ability].score,
+                    saveModifier: character.savingThrows[ability].value,
+                    saveProficient: character.savingThrows[ability].proficient,
+                  }))}
+                />
+                <div className="mt-4 space-y-2 text-sm text-[var(--muted)]">
+                  <p><span className="font-semibold text-[var(--text)]">Fey Ancestry:</span> Advantage on charm saves, plus 2 Misty Step charges and 1 Heroism charge each long rest.</p>
+                  <p><span className="font-semibold text-[var(--text)]">Tool Expertise:</span> Double proficiency bonus for ability checks using a tool Brek is proficient with.</p>
+                  <p><span className="font-semibold text-[var(--text)]">Tool proficiency contribution:</span> +6 before the relevant ability modifier.</p>
+                </div>
+              </ShellCard>
+
+              <ShellCard title="Skills" subtitle="Skill bonuses are grouped by governing ability, with proficiency bubbles shown on the left.">
+                <SkillsTable rows={skillRows} />
+              </ShellCard>
 
               <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
                 <TableSurface>
