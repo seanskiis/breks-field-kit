@@ -58,7 +58,7 @@ const SKILL_DEFINITIONS = [
 ] as const;
 const LONG_REST_ELIXIRS = ["Healing", "Swiftness", "Resilience", "Boldness", "Flight", "Transformation"];
 const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "dashboard", label: "Abilities & Skills", icon: LayoutDashboard },
   { id: "combat", label: "Combat", icon: Swords },
   { id: "spells", label: "Spells", icon: WandSparkles },
   // { id: "veech", label: "Veech", icon: Sparkles },
@@ -1194,7 +1194,6 @@ export function FieldKitApp() {
   const { feedback, pulse } = useTemporaryFeedback();
 
   const activeInfusions = useMemo(() => character.infusionsActive.filter((item) => item.active), [character.infusionsActive]);
-  const pinnedReminders = useMemo(() => character.reminders.filter((item) => item.pinned), [character.reminders]);
   const regularPreparedSpells = useMemo(
     () => character.spells.filter((spell) => spell.prepared && !spell.alwaysPrepared),
     [character.spells],
@@ -1986,53 +1985,6 @@ export function FieldKitApp() {
                   ))}
                 </TableSurface>
               </ShellCard>
-
-              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-                <ShellCard title="Do Not Forget" subtitle="Pinned reminders stay visible, but the layout is denser and easier to scan.">
-                  <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white/82">
-                    {pinnedReminders.map((reminder) => (
-                      <div key={reminder.id} className="grid gap-2 border-t border-[var(--line)] px-4 py-3 first:border-t-0 md:grid-cols-[0.8fr_2fr_0.45fr] md:items-start md:gap-3">
-                        <div>
-                          <h3 className="font-semibold">{reminder.title}</h3>
-                        </div>
-                        <p className="text-sm leading-6 text-[var(--muted)]">{reminder.summary}</p>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            commit("Toggled reminder pin", (draft) => {
-                              const target = draft.reminders.find((item) => item.id === reminder.id);
-                              if (target) target.pinned = !target.pinned;
-                            })
-                          }
-                          className="rounded-xl border border-[var(--line)] px-3 py-2 text-sm md:justify-self-end"
-                        >
-                          Unpin
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </ShellCard>
-
-                <ShellCard title="Quick Decision Prompts" subtitle="Still collapsible, but written as compact table-note prompts instead of oversized cards.">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      commit("Toggled decision prompts", (draft) => {
-                        draft.decisionPrompts.expanded = !draft.decisionPrompts.expanded;
-                      })
-                    }
-                    className="mb-4 min-h-11 rounded-2xl border border-[var(--line)] bg-white px-4 text-left"
-                  >
-                    {character.decisionPrompts.expanded ? "Collapse prompts" : "Expand prompts"}
-                  </button>
-                  {character.decisionPrompts.expanded ? (
-                    <div className="space-y-4">
-                      <PromptBlock title="Before Acting" prompts={character.decisionPrompts.beforeActing} />
-                      <PromptBlock title="When a Roll Happens" prompts={character.decisionPrompts.whenRollHappens} accent="orange" />
-                    </div>
-                  ) : null}
-                </ShellCard>
-              </div>
             </div>
           ) : null}
 
