@@ -45,6 +45,57 @@ const navItems: Array<{ id: NavView; label: string; icon: React.ComponentType<{ 
   { id: "setup", label: "Character Setup", icon: Shield },
 ];
 
+const SPELL_DISPLAY_OVERRIDES: Record<string, Partial<Spell>> = {
+  guidance: { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "Add 1d4 to one ability check." },
+  mending: { castingTime: "1 Minute", components: "V, S, M", areaOfEffect: "—", effectText: "Repairs a break or tear in an object." },
+  "healing-word": { castingTime: "1 Bonus Action", hitDc: "—", components: "V", areaOfEffect: "—", effectText: "2d4 + INT ❤ at range for an ally." },
+  "ray-of-sickness": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "2d8 ☠ and can poison the target." },
+  "flaming-sphere": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "5 ft. sphere", effectText: "2d6 🔥 in a movable sphere." },
+  "melfs-acid-arrow": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "4d4 🧪 now and 2d4 🧪 next turn." },
+  "faerie-fire": { castingTime: "1 Action", components: "V", areaOfEffect: "20 ft. cube", effectText: "Outlined targets lose invisibility and grant advantage." },
+  snare: { castingTime: "1 Minute", components: "S, M", areaOfEffect: "5 ft. radius", effectText: "Hidden magical trap restrains and suspends a creature." },
+  "tashas-caustic-brew": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "30 ft. line", effectText: "2d4 🧪 and pressures targets to spend actions." },
+  "false-life": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Gain temporary HP ❤ before danger." },
+  grease: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "10 ft. square", effectText: "Creates slippery terrain and can knock creatures prone." },
+  identify: { castingTime: "1 Minute", components: "V, S, M", areaOfEffect: "—", effectText: "Reveal item or magic properties." },
+  alarm: { castingTime: "1 Minute", components: "V, S, M", areaOfEffect: "20 ft. cube", effectText: "Protect a campsite or room with an alarm ward." },
+  "cure-wounds": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "1d8 + INT ❤ to a touched creature." },
+  "detect-magic": { castingTime: "1 Action", components: "V, S", areaOfEffect: "Self, 30 ft. radius", effectText: "Sense nearby magic while exploring." },
+  "disguise-self": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "Change appearance for infiltration." },
+  "expeditious-retreat": { castingTime: "1 Bonus Action", components: "V, S", areaOfEffect: "—", effectText: "Dash every turn for repositioning." },
+  "feather-fall": { castingTime: "1 Reaction", components: "V, M", areaOfEffect: "Up to 5 creatures", effectText: "Slow falling creatures before impact." },
+  heroism: { castingTime: "1 Bonus Action", components: "V, S", areaOfEffect: "—", effectText: "A creature gains temporary HP ❤ and ignores fear." },
+  jump: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Triple jump distance for 1 minute." },
+  longstrider: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "+10 ft. speed for 1 hour." },
+  "purify-food-and-drink": { castingTime: "1 Action", components: "V, S", areaOfEffect: "5 ft. sphere", effectText: "Makes suspicious provisions safe." },
+  sanctuary: { castingTime: "1 Bonus Action", components: "V, S, M", areaOfEffect: "—", effectText: "Protect a creature unless attackers pass a WIS save." },
+  "absorb-elements": { castingTime: "1 Reaction", components: "S", areaOfEffect: "—", effectText: "Gain resistance and store elemental energy." },
+  catapult: { castingTime: "1 Action", components: "S", areaOfEffect: "—", effectText: "3d8 ✦ by launching an object at a target." },
+  aid: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "Up to 3 creatures", effectText: "Raise max and current HP ❤ for allies." },
+  "alter-self": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "Adapt body for disguise, mobility, or natural weapons." },
+  "arcane-lock": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Seal a door or container against intrusion." },
+  blur: { castingTime: "1 Action", components: "V", areaOfEffect: "—", effectText: "Attacks against you have disadvantage." },
+  "continual-flame": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Create a permanent magical flame." },
+  darkvision: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Grant 60 ft. darkvision." },
+  "enhance-ability": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Advantage and rider benefits for one ability." },
+  "enlarge-reduce": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Change a creature's size and combat profile." },
+  "heat-metal": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "2d8 🔥 and ongoing pressure against metal-wearers." },
+  invisibility: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "A creature becomes invisible." },
+  "lesser-restoration": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "End blindness, deafness, paralysis, or poison." },
+  levitate: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Raise a creature or object vertically." },
+  "magic-mouth": { castingTime: "1 Minute", components: "V, S, M", areaOfEffect: "—", effectText: "Leave a magical spoken message or warning." },
+  "magic-weapon": { castingTime: "1 Bonus Action", components: "V, S", areaOfEffect: "—", effectText: "Buff a weapon for harder fights." },
+  "misty-step": { castingTime: "1 Bonus Action", components: "V", areaOfEffect: "Self", effectText: "Teleport up to 30 ft. ➜" },
+  "protection-from-poison": { castingTime: "1 Action", components: "V, S", areaOfEffect: "—", effectText: "Neutralize poison and grant poison resistance." },
+  "rope-trick": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Create a temporary extradimensional hideaway." },
+  "see-invisibility": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "Self", effectText: "See invisible creatures and objects." },
+  "spider-climb": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "—", effectText: "Move across walls and ceilings." },
+  web: { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "20 ft. cube", effectText: "Create restraining webs over an area." },
+  pyrotechnics: { castingTime: "1 Action", components: "V, S", areaOfEffect: "10 ft. radius", effectText: "Burst flame into fireworks or smoke." },
+  skywrite: { castingTime: "1 Action", components: "V, S", areaOfEffect: "Sight", effectText: "Write a message in the sky." },
+  "tortoise-shell": { castingTime: "1 Action", components: "V, S, M", areaOfEffect: "Self", effectText: "Harden into a defensive shell." },
+};
+
 type UndoState = {
   label: string;
   snapshot: CharacterData;
@@ -587,52 +638,163 @@ function matchesPreparedFilter(spell: Spell, filter: string) {
   return true;
 }
 
+function getCastingTime(spell: Spell) {
+  const override = SPELL_DISPLAY_OVERRIDES[spell.id];
+  if (override?.castingTime) return override.castingTime;
+  if (spell.castingTime) return spell.castingTime;
+  if (spell.actionType === "action") return "1 Action";
+  if (spell.actionType === "bonus") return "1 Bonus Action";
+  if (spell.actionType === "reaction") return "1 Reaction";
+  return "Utility";
+}
+
+function getHitDc(spell: Spell) {
+  const override = SPELL_DISPLAY_OVERRIDES[spell.id];
+  if (override?.hitDc) return override.hitDc;
+  if (spell.hitDc) return spell.hitDc;
+  const match = spell.saveOrAttack.match(/^([A-Za-z]+)\s+save\s+(\d+)$/i);
+  if (match) return `${match[1].slice(0, 3).toUpperCase()} ${match[2]}`;
+  const attackMatch = spell.saveOrAttack.match(/^([+-]\d+)\s+attack$/i);
+  if (attackMatch) return `${attackMatch[1]} to hit`;
+  return "—";
+}
+
+function getEffectText(spell: Spell) {
+  const override = SPELL_DISPLAY_OVERRIDES[spell.id];
+  if (override?.effectText) return override.effectText;
+  if (spell.effectText) return spell.effectText;
+  return spell.summary;
+}
+
+function getEffectIcon(spell: Spell) {
+  if (spell.tags.includes("healing")) return "❤";
+  if (spell.tags.includes("poison")) return "☠";
+  if (spell.tags.includes("acid")) return "🧪";
+  if (spell.tags.includes("fire")) return "🔥";
+  if (spell.tags.includes("damage")) return "✦";
+  if (spell.tags.includes("control")) return "◎";
+  if (spell.tags.includes("escape") || spell.tags.includes("mobility")) return "➜";
+  if (spell.tags.includes("support")) return "✚";
+  return "•";
+}
+
+function getAreaOfEffect(spell: Spell) {
+  const override = SPELL_DISPLAY_OVERRIDES[spell.id];
+  if (override?.areaOfEffect) return override.areaOfEffect;
+  if (spell.areaOfEffect) return spell.areaOfEffect;
+  const selfAreaMatch = spell.range.match(/^Self \((.+)\)$/i);
+  if (selfAreaMatch) return selfAreaMatch[1];
+  return "—";
+}
+
+function getComponents(spell: Spell) {
+  const override = SPELL_DISPLAY_OVERRIDES[spell.id];
+  if (override?.components) return override.components;
+  return spell.components ?? "—";
+}
+
+function SpellSlotTracker({
+  current,
+  max,
+  onChange,
+}: {
+  current: number;
+  max: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Array.from({ length: max }, (_, index) => {
+        const checked = index < current;
+        return (
+          <button
+            key={index}
+            type="button"
+            onClick={() => {
+              if (checked) {
+                onChange(Math.max(0, current - 1));
+              } else {
+                onChange(Math.min(max, current + 1));
+              }
+            }}
+            className={cx(
+              "flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-semibold transition",
+              checked ? "border-[var(--green)] bg-[var(--green-soft)] text-[var(--green)]" : "border-[var(--line)] bg-white text-[var(--muted)]",
+            )}
+            aria-label={`Spell slot ${index + 1} ${checked ? "available" : "spent"}`}
+          >
+            {checked ? "X" : ""}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SpellLevelSection({
   title,
   spells,
-  slotLabel,
+  slotCurrent,
+  slotMax,
   feedback,
   onCast,
   onTogglePrepared,
+  onSlotChange,
 }: {
   title: string;
   spells: Spell[];
-  slotLabel?: string;
+  slotCurrent?: number;
+  slotMax?: number;
   feedback: Record<string, string>;
   onCast: (spell: Spell) => void;
   onTogglePrepared: (spellId: string) => void;
+  onSlotChange?: (next: number) => void;
 }) {
   return (
-    <ShellCard title={title} subtitle={slotLabel}>
+    <ShellCard title={title} subtitle={slotMax ? `${slotCurrent}/${slotMax} slots left` : "No spell slots required."}>
+      {slotMax && onSlotChange ? (
+        <div className="mb-4">
+          <SpellSlotTracker current={slotCurrent ?? 0} max={slotMax} onChange={onSlotChange} />
+        </div>
+      ) : null}
       <TableSurface className="rounded-[20px]">
         {spells.length === 0 ? (
           <div className="px-4 py-4 text-sm text-[var(--muted)]">No spells in this section.</div>
         ) : (
           spells.map((spell) => (
-            <TableBodyRow key={spell.id} className="grid gap-2 md:grid-cols-[0.95fr_1.65fr_0.8fr] md:items-start md:gap-3">
+            <TableBodyRow key={spell.id} className="grid gap-3 md:grid-cols-[0.85fr_2fr_0.7fr] md:items-start md:gap-4">
               <div>
                 <h3 className="font-semibold">{spell.name}</h3>
-                <p className="text-sm text-[var(--muted)]">
-                  {spell.alwaysPrepared ? "Always prepared" : spell.prepared ? "Prepared" : "Available"} • {spell.actionType} • {spell.range}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm leading-6 text-[var(--muted)]">{spell.summary}</p>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-full bg-[var(--green-soft)] px-3 py-1 text-[var(--green)]">{spell.saveOrAttack}</span>
-                  {spell.tags.map((tag) => (
-                    <span key={tag} className="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-[var(--muted)]">
-                      {tag}
-                    </span>
-                  ))}
+                <div className="mt-2 grid gap-1 text-sm text-[var(--muted)]">
+                  <p><span className="font-medium text-[var(--text)]">Casting Time:</span> {getCastingTime(spell)}</p>
+                  <p><span className="font-medium text-[var(--text)]">Range:</span> {spell.range}</p>
+                  <p><span className="font-medium text-[var(--text)]">Hit / DC:</span> {getHitDc(spell)}</p>
+                  <p><span className="font-medium text-[var(--text)]">Components:</span> {getComponents(spell)}</p>
+                  <p><span className="font-medium text-[var(--text)]">Area:</span> {getAreaOfEffect(spell)}</p>
                 </div>
               </div>
-              <div className="flex gap-2 md:justify-self-end">
+              <div>
+                <p className="text-sm leading-6 text-[var(--muted)]">
+                  <span className="mr-2 font-semibold text-[var(--text)]">{getEffectIcon(spell)}</span>
+                  <span><span className="font-medium text-[var(--text)]">Effect:</span> {getEffectText(spell)}</span>
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 md:justify-self-end">
                 <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
                   {feedback[`spell-${spell.id}`] ?? "Cast"}
                 </button>
-                <button type="button" onClick={() => onTogglePrepared(spell.id)} className="min-h-10 rounded-xl border border-[var(--line)] px-4 text-sm">
-                  {spell.prepared ? "Prepared" : "Not prepared"}
+                <button
+                  type="button"
+                  disabled={spell.alwaysPrepared}
+                  onClick={() => onTogglePrepared(spell.id)}
+                  className={cx(
+                    "min-h-10 rounded-xl border px-4 text-sm",
+                    spell.alwaysPrepared
+                      ? "cursor-not-allowed border-[var(--line)] bg-[var(--panel-strong)] text-[var(--muted)]"
+                      : "border-[var(--line)] bg-white text-[var(--text)]",
+                  )}
+                >
+                  {spell.alwaysPrepared ? "Always Prepared" : spell.prepared ? "Prepared" : "Unprepared"}
                 </button>
               </div>
             </TableBodyRow>
@@ -1010,6 +1172,22 @@ export function FieldKitApp() {
       addLog(draft, `${field === "currentHp" ? "Current HP" : "Temporary HP"} changed from ${oldValue} to ${next}.`);
     });
     showToast(`${field === "currentHp" ? "Current HP" : "Temp HP"} updated to ${next}.`);
+  }
+
+  function updateSpellSlotResource(resourceId: string, nextCurrent: number) {
+    const resource = character.resources.find((item) => item.id === resourceId);
+    if (!resource) return;
+    const next = Math.max(0, Math.min(resource.max, nextCurrent));
+    if (next === resource.current) return;
+
+    commit(`Updated ${resource.name}`, (draft) => {
+      const target = draft.resources.find((item) => item.id === resourceId);
+      if (!target) return;
+      const previous = target.current;
+      target.current = next;
+      addLog(draft, `${resource.name} changed from ${previous}/${resource.max} to ${next}/${resource.max}.`);
+    });
+    showToast(`${resource.name} updated to ${next}/${resource.max}.`);
   }
 
   function updateResource(resourceId: string, delta: number, verb: "Spent" | "Restored") {
@@ -1577,22 +1755,26 @@ export function FieldKitApp() {
                   ))}
                 </div>
               </ShellCard>
-              <SpellLevelSection title="Cantrips" spells={cantrips} slotLabel="No spell slots required." feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} />
+              <SpellLevelSection title="Cantrips" spells={cantrips} feedback={feedback} onCast={castSpell} onTogglePrepared={togglePrepared} />
               <SpellLevelSection
                 title="Level 1 Spells"
                 spells={firstLevelSpells}
-                slotLabel={`Spell slots: ${character.resources.find((item) => item.id === "slot1")?.current ?? 0}/${character.resources.find((item) => item.id === "slot1")?.max ?? 0}`}
+                slotCurrent={character.resources.find((item) => item.id === "slot1")?.current ?? 0}
+                slotMax={character.resources.find((item) => item.id === "slot1")?.max ?? 0}
                 feedback={feedback}
                 onCast={castSpell}
                 onTogglePrepared={togglePrepared}
+                onSlotChange={(next) => updateSpellSlotResource("slot1", next)}
               />
               <SpellLevelSection
                 title="Level 2 Spells"
                 spells={secondLevelSpells}
-                slotLabel={`Spell slots: ${character.resources.find((item) => item.id === "slot2")?.current ?? 0}/${character.resources.find((item) => item.id === "slot2")?.max ?? 0}`}
+                slotCurrent={character.resources.find((item) => item.id === "slot2")?.current ?? 0}
+                slotMax={character.resources.find((item) => item.id === "slot2")?.max ?? 0}
                 feedback={feedback}
                 onCast={castSpell}
                 onTogglePrepared={togglePrepared}
+                onSlotChange={(next) => updateSpellSlotResource("slot2", next)}
               />
             </div>
           ) : null}

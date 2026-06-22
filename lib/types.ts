@@ -56,6 +56,11 @@ export type Spell = {
   summary: string;
   tags: string[];
   notes?: string;
+  castingTime?: string;
+  hitDc?: string;
+  effectText?: string;
+  components?: string;
+  areaOfEffect?: string;
 };
 
 export type Elixir = {
