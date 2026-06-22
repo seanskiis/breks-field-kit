@@ -997,6 +997,16 @@ type ActionRowData = {
   details?: string;
 };
 
+type CombatSpellRowData = {
+  id: string;
+  name: string;
+  castingTime: string;
+  range: string;
+  hitDc: string;
+  effect: string;
+  cost: string;
+};
+
 function ActionTable({
   title,
   rows,
@@ -1051,6 +1061,58 @@ function ActionTable({
                   )}
                 >
                   {feedback[row.id] ?? "Use"}
+                </button>
+              </div>
+            </div>
+          </TableBodyRow>
+        ))}
+      </TableSurface>
+    </ShellCard>
+  );
+}
+
+function CombatSpellTable({
+  title,
+  rows,
+  feedback,
+  onCast,
+}: {
+  title: string;
+  rows: CombatSpellRowData[];
+  feedback: Record<string, string>;
+  onCast: (spellId: string) => void;
+}) {
+  return (
+    <ShellCard title={title}>
+      <TableSurface className="bg-transparent">
+        <TableHeaderRow className="grid-cols-[1fr_0.8fr_0.75fr_0.8fr_1.5fr_0.55fr_0.45fr] gap-3">
+          <span>Name</span>
+          <span>Casting</span>
+          <span>Range</span>
+          <span>Hit / DC</span>
+          <span>Effect</span>
+          <span>Cost</span>
+          <span className="text-right">Cast</span>
+        </TableHeaderRow>
+        {rows.map((row) => (
+          <TableBodyRow key={row.id} className="bg-white/82 transition hover:bg-[var(--panel-strong)] active:bg-[var(--green-soft)]">
+            <div className="grid gap-2 md:grid-cols-[1fr_0.8fr_0.75fr_0.8fr_1.5fr_0.55fr_0.45fr] md:items-center md:gap-3">
+              <p className="font-semibold">{row.name}</p>
+              <p className="text-sm text-[var(--muted)]">{row.castingTime}</p>
+              <p className="text-sm text-[var(--muted)]">{row.range}</p>
+              <p className="text-sm text-[var(--muted)]">{row.hitDc}</p>
+              <p className="text-sm leading-6 text-[var(--muted)]">{row.effect}</p>
+              <p className="text-sm text-[var(--muted)]">{row.cost}</p>
+              <div className="md:text-right">
+                <button
+                  type="button"
+                  onClick={() => onCast(row.id)}
+                  className={cx(
+                    "min-h-10 rounded-xl px-4 text-sm font-semibold transition",
+                    feedback[`spell-${row.id}`] ? "bg-[var(--orange)] text-white" : "bg-[var(--green)] text-white hover:bg-[#244936]",
+                  )}
+                >
+                  {feedback[`spell-${row.id}`] ?? "Cast"}
                 </button>
               </div>
             </div>
@@ -1152,6 +1214,21 @@ export function FieldKitApp() {
         bonus: character.abilities[skill.ability].modifier + (skill.proficient ? proficiencyBonusValue : 0),
       })),
     [character.abilities, proficiencyBonusValue],
+  );
+  const preparedCombatSpells = useMemo(
+    () =>
+      character.spells
+        .filter((spell) => spell.prepared)
+        .map((spell) => ({
+          id: spell.id,
+          name: spell.name,
+          castingTime: getCastingTime(spell),
+          range: spell.range,
+          hitDc: getHitDc(spell),
+          effect: getEffectText(spell),
+          cost: spell.level === 0 ? "Cantrip" : `Lv ${spell.level}`,
+        })),
+    [character.spells],
   );
   const currentRestElixirs = useMemo(
     () => character.elixirs.filter((item) => item.source === "long-rest" && item.createdDuringRestId === currentPreparationId),
@@ -1955,10 +2032,26 @@ export function FieldKitApp() {
 
           {character.ui.activeView === "combat" ? (
             <div className="space-y-4">
+              <ActionTable
+                title="Weapons"
+                rows={character.attacks.map((attack) => ({
+                  id: attack.id,
+                  name: attack.name,
+                  typeOrTrigger: "Weapon",
+                  summary: `${attack.attackBonus} to hit, ${attack.damage} ${attack.damageType}, ${attack.range}`,
+                  cost: "—",
+                  details: attack.traits.join(", "),
+                }))}
+                feedback={feedback}
+                onUse={(row) => handleActionRowUse(row, "action")}
+              />
+              <CombatSpellTable title="Spells" rows={preparedCombatSpells} feedback={feedback} onCast={(spellId) => {
+                const spell = character.spells.find((item) => item.id === spellId);
+                if (spell) castSpell(spell);
+              }} />
               <ActionTable title="Actions" rows={buildActionRows("action")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "action")} />
               <ActionTable title="Bonus Actions" rows={buildActionRows("bonus")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "bonus")} />
               <ActionTable title="Reactions" rows={buildActionRows("reaction")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "reaction")} />
-              <ActionTable title="Passive / Triggered Benefits" rows={buildActionRows("passive")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "passive")} />
             </div>
           ) : null}
 
