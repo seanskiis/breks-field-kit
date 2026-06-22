@@ -1955,36 +1955,6 @@ export function FieldKitApp() {
                 <SkillsTable rows={skillRows} />
               </ShellCard>
 
-              <ShellCard title="Quick Resource Strip" subtitle="Spend and restore counters with immediate feedback instead of hunting through the log.">
-                <TableSurface>
-                  <TableHeaderRow className="grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] gap-3">
-                    <span>Resource</span>
-                    <span className="text-right">Current</span>
-                    <span className="text-right">Max</span>
-                    <span>Reset</span>
-                    <span className="text-right">Actions</span>
-                  </TableHeaderRow>
-                  {character.resources.map((resource) => (
-                    <TableBodyRow key={resource.id} className="grid gap-2 md:grid-cols-[1.2fr_0.55fr_0.65fr_0.9fr_0.8fr] md:items-center md:gap-3">
-                      <div>
-                        <p className="font-semibold">{resource.name}</p>
-                        {resource.notes ? <p className="mt-1 text-sm text-[var(--muted)]">{resource.notes}</p> : null}
-                      </div>
-                      <p className="text-sm font-semibold md:text-right">{resource.current}</p>
-                      <p className="text-sm text-[var(--muted)] md:text-right">{resource.max}</p>
-                      <p className="text-sm text-[var(--muted)]">{resource.resetType}</p>
-                      <div className="grid grid-cols-2 gap-2 md:justify-self-end">
-                        <button type="button" onClick={() => updateResource(resource.id, -1, "Spent")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                          {feedback[`Spent-${resource.id}`] ?? "Spend"}
-                        </button>
-                        <button type="button" onClick={() => updateResource(resource.id, 1, "Restored")} className="min-h-11 rounded-2xl border border-[var(--line)] bg-white">
-                          {feedback[`Restored-${resource.id}`] ?? "Restore"}
-                        </button>
-                      </div>
-                    </TableBodyRow>
-                  ))}
-                </TableSurface>
-              </ShellCard>
             </div>
           ) : null}
 
