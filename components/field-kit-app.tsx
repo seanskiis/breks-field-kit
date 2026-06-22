@@ -511,7 +511,7 @@ function AbilitySaveTable({
 }) {
   return (
     <TableSurface>
-      <div className="hidden grid-cols-[0.35fr_1.05fr_0.5fr_0.45fr_0.16fr_0.35fr_0.95fr] gap-3 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
+      <div className="hidden grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.35fr_1.05fr] gap-4 bg-[var(--green-soft)] px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--muted)] md:grid">
         <span className="text-center">Prof</span>
         <span>Ability</span>
         <span className="text-right">Mod</span>
@@ -523,7 +523,7 @@ function AbilitySaveTable({
       {rows.map((row) => (
         <TableBodyRow
           key={row.keyLabel}
-          className="grid grid-cols-[auto_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_1.05fr_0.5fr_0.45fr_0.16fr_0.35fr_0.95fr] md:items-center"
+          className="grid grid-cols-[auto_1fr_0.8fr] gap-x-3 gap-y-2 text-sm md:grid-cols-[0.35fr_1.2fr_0.36fr_0.3fr_0.28fr_0.35fr_1.05fr] md:gap-x-4 md:items-center"
         >
           <span className="flex items-center justify-center">
             <ProficiencyBubble filled={row.abilityProficient} />
