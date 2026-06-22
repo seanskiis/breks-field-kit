@@ -914,7 +914,7 @@ function SpellLevelSection({
                     </label>
                   </div>
                   <div className="flex flex-col gap-2 md:justify-self-end">
-                    <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                    <button type="button" onClick={() => onCast(spell)} className={cx("kit-action-button min-h-10 rounded-xl", feedback[`spell-${spell.id}`] ? "brightness-110" : "")}>
                       {feedback[`spell-${spell.id}`] ?? "Cast"}
                     </button>
                     <button
@@ -959,7 +959,7 @@ function SpellLevelSection({
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 md:justify-self-end">
-                    <button type="button" onClick={() => onCast(spell)} className="min-h-10 rounded-xl bg-[var(--green)] px-4 text-sm text-white">
+                    <button type="button" onClick={() => onCast(spell)} className={cx("kit-action-button min-h-10 rounded-xl", feedback[`spell-${spell.id}`] ? "brightness-110" : "")}>
                       {feedback[`spell-${spell.id}`] ?? "Cast"}
                     </button>
                     <button
@@ -1052,12 +1052,12 @@ function ActionTable({
                   disabled={row.disabled}
                   onClick={() => onUse(row)}
                   className={cx(
-                    "min-h-10 rounded-xl px-4 text-sm font-semibold transition",
+                    "kit-action-button min-h-10 rounded-xl transition",
                     row.disabled
-                      ? "cursor-not-allowed border border-[var(--line)] bg-white text-[var(--muted)] opacity-70"
+                      ? "cursor-not-allowed opacity-70"
                       : feedback[row.id]
-                        ? "bg-[var(--orange)] text-white"
-                        : "bg-[var(--green)] text-white hover:bg-[#244936]",
+                        ? "brightness-110"
+                        : "",
                   )}
                 >
                   {feedback[row.id] ?? "Use"}
@@ -1108,8 +1108,8 @@ function CombatSpellTable({
                   type="button"
                   onClick={() => onCast(row.id)}
                   className={cx(
-                    "min-h-10 rounded-xl px-4 text-sm font-semibold transition",
-                    feedback[`spell-${row.id}`] ? "bg-[var(--orange)] text-white" : "bg-[var(--green)] text-white hover:bg-[#244936]",
+                    "kit-action-button min-h-10 rounded-xl transition",
+                    feedback[`spell-${row.id}`] ? "brightness-110" : "",
                   )}
                 >
                   {feedback[`spell-${row.id}`] ?? "Cast"}
