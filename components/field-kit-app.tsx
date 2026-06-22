@@ -490,7 +490,7 @@ function ProficiencyBubble({
     <span
       aria-hidden="true"
       className={cx(
-        "inline-flex h-4 w-4 items-center justify-center border border-[var(--line)]",
+        "inline-flex h-4 w-4 items-center justify-center rounded-full border border-[var(--line)]",
         filled ? "bg-[var(--brass)] shadow-[0_0_0_1px_rgba(240,176,67,0.18)]" : "bg-transparent",
       )}
     />
