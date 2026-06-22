@@ -676,7 +676,7 @@ function EditableNumberRow({
   return (
     <div className={cx("grid grid-cols-[1.1fr_1fr] items-center gap-3 border-t border-[var(--line)] first:border-t-0", compact ? "px-3 py-2.5" : "px-4 py-3")}>
       <p className={cx("uppercase tracking-[0.22em] text-[var(--muted)]", compact ? "text-[10px]" : "text-[11px]")}>{label}</p>
-      <div className={cx("justify-self-end", denominator ? "grid grid-cols-[minmax(0,5rem)_auto] items-center gap-2" : "flex items-center justify-end")}>
+      <div className={cx("justify-self-end", denominator ? "flex w-full items-center justify-end gap-2" : "flex items-center justify-end")}>
         <input
           key={fieldKey}
           aria-label={label}
@@ -689,9 +689,9 @@ function EditableNumberRow({
               event.currentTarget.blur();
             }
           }}
-          className={cx("kit-control border border-[var(--line)] bg-[var(--panel-strong)] text-right font-bold outline-none transition focus:border-[var(--green)]", compact ? "w-20 px-2.5 py-1.5 text-lg" : "w-24 px-3 py-2 text-xl")}
+          className={cx("kit-control border border-[var(--line)] bg-[var(--panel-strong)] text-right font-bold outline-none transition focus:border-[var(--green)]", compact ? "w-[4.5rem] px-2.5 py-1.5 text-lg" : "w-24 px-3 py-2 text-xl")}
         />
-        {denominator ? <span className={cx("min-w-[2.5rem] text-left font-semibold text-[var(--muted)]", compact ? "text-xs" : "text-sm")}>/ {denominator}</span> : null}
+        {denominator ? <span className={cx("shrink-0 text-left font-semibold leading-none text-[var(--muted)]", compact ? "text-xs" : "text-sm")}>/ {denominator}</span> : null}
       </div>
     </div>
   );
