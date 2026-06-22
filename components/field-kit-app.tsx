@@ -702,26 +702,28 @@ function SpellSlotTracker({
   max: number;
   onChange: (next: number) => void;
 }) {
+  const used = Math.max(0, max - current);
+
   return (
     <div className="flex flex-wrap gap-2">
       {Array.from({ length: max }, (_, index) => {
-        const checked = index < current;
+        const checked = index < used;
         return (
           <button
             key={index}
             type="button"
             onClick={() => {
               if (checked) {
-                onChange(Math.max(0, current - 1));
-              } else {
                 onChange(Math.min(max, current + 1));
+              } else {
+                onChange(Math.max(0, current - 1));
               }
             }}
             className={cx(
               "flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-semibold transition",
               checked ? "border-[var(--green)] bg-[var(--green-soft)] text-[var(--green)]" : "border-[var(--line)] bg-white text-[var(--muted)]",
             )}
-            aria-label={`Spell slot ${index + 1} ${checked ? "available" : "spent"}`}
+            aria-label={`Spell slot ${index + 1} ${checked ? "spent" : "available"}`}
           >
             {checked ? "X" : ""}
           </button>
