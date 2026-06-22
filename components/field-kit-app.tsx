@@ -532,7 +532,7 @@ function AbilitySaveTable({
         <span>Ability</span>
         <span className="text-right">Mod</span>
         <span className="text-right">Score</span>
-        <span className="justify-self-center">|</span>
+        <span />
         <span className="text-right">Save Mod</span>
         <span className="text-center">Prof</span>
       </div>
@@ -2079,7 +2079,6 @@ export function FieldKitApp() {
                   if (spell) castSpell(spell);
                 }}
               />
-              <ActionTable title="Actions" rows={buildActionRows("action")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "action")} />
               <ActionTable title="Bonus Actions" rows={buildActionRows("bonus")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "bonus")} />
               <ActionTable title="Reactions" rows={buildActionRows("reaction")} feedback={feedback} onUse={(row) => handleActionRowUse(row, "reaction")} />
             </div>
